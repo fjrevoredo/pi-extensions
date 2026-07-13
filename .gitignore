@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Node / package managers
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Build / temporary outputs
+dist/
+build/
+coverage/
+.tmp/
+tmp/
+
+# Local editor / tooling noise
+.vscode/
+.idea/
+*.swp
+*.swo
