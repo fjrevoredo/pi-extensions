@@ -28,39 +28,14 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import { Type, type Static } from "typebox";
-
-// Reserved synthetic option value for the built-in fallback that is appended to every question.
-const SOMETHING_ELSE_VALUE = "__something_else__";
-
-type OptionResponseType = "select" | "freeText";
-type FreeTextMode = "input" | "editor";
-
-/**
- * Normalized explicit option as used by the runtime.
- *
- * The built-in "Something else" fallback is not stored here; it is appended at render time.
- */
-interface AskUserOption {
-	value: string;
-	label: string;
-	description?: string;
-	responseType: OptionResponseType;
-	freeTextMode?: FreeTextMode;
-	freeTextPlaceholder?: string;
-}
-
-/** Normalized question shape used by the wizard after validation. */
-interface AskUserQuestion {
-	id: string;
-	label: string;
-	prompt: string;
-	options: AskUserOption[];
-	somethingElseMode: FreeTextMode;
-	somethingElsePlaceholder: string;
-	recommendedOptionValue?: string;
-	recommendationRationale?: string;
-	recommendedOptionLabel?: string;
-}
+import {
+	defaultFreeTextPlaceholder,
+	normalizeQuestions,
+	SOMETHING_ELSE_VALUE,
+	type AskUserOption,
+	type AskUserQuestion,
+	type FreeTextMode,
+} from "./ask-user/validation.ts";
 
 /**
  * Structured answer returned by the tool.
@@ -102,32 +77,49 @@ interface DisplayOption {
 	item: SelectItem;
 	optionValue: string;
 	optionLabel: string;
-	responseType: OptionResponseType;
+	responseType: AskUserOption["responseType"];
 	freeTextMode?: FreeTextMode;
 	freeTextPlaceholder?: string;
 }
 
-// Model-facing schema for explicit options.
-const AskUserOptionSchema = Type.Object({
+// Model-facing schema for explicit options. The branches are deliberately strict:
+// every explicit option declares its response type, and conditional fields are only
+// available on the matching branch.
+const AskUserOptionCommonSchema = {
 	value: Type.String({ description: "Stable value returned when this explicit option is selected" }),
 	label: Type.String({ description: "Display label shown to the user" }),
-	description: Type.Optional(Type.String({ description: "Optional supporting text shown under the option" })),
-	responseType: Type.Optional(
-		StringEnum(["select", "freeText"] as const, {
-			description:
-				"How this explicit option behaves. Omit for a normal fixed selection. Use freeText to open a text field after selection.",
+	description: Type.String({ description: "Supporting text shown under the option" }),
+};
+
+const AskUserSelectOptionSchema = Type.Object(
+	{
+		...AskUserOptionCommonSchema,
+		responseType: Type.Literal("select", {
+			description: "Fixed selection; do not include freeTextMode or freeTextPlaceholder",
 		}),
-	),
-	freeTextMode: Type.Optional(
-		StringEnum(["input", "editor"] as const, {
-			description: "Free-text entry mode for explicit options with responseType=freeText",
+	},
+	{ additionalProperties: false },
+);
+
+const AskUserFreeTextOptionSchema = Type.Object(
+	{
+		...AskUserOptionCommonSchema,
+		responseType: Type.Literal("freeText", {
+			description: "Open a text field after this explicit option is selected",
 		}),
-	),
-	freeTextPlaceholder: Type.Optional(
-		Type.String({
-			description: "Placeholder or hint text for explicit options with responseType=freeText",
+		freeTextMode: StringEnum(["input", "editor"] as const, {
+			description: "Free-text entry mode for this explicit option",
 		}),
-	),
+		freeTextPlaceholder: Type.String({
+			description: "Non-empty placeholder or hint text for this explicit option",
+		}),
+	},
+	{ additionalProperties: false },
+);
+
+const AskUserOptionSchema = Type.Union([AskUserSelectOptionSchema, AskUserFreeTextOptionSchema], {
+	description:
+		"Use the select branch for fixed choices or the freeText branch with both free-text fields. Do not mix fields between branches.",
 });
 
 // Model-facing schema for each question. Defaults are resolved in normalizeQuestions().
@@ -174,10 +166,6 @@ const AskUserParamsSchema = Type.Object({
 
 type AskUserParams = Static<typeof AskUserParamsSchema>;
 
-function isBlank(value: string | undefined): boolean {
-	return !value || value.trim().length === 0;
-}
-
 /** Build the structured details object persisted on the tool result message. */
 function createDetails(
 	questions: AskUserQuestion[],
@@ -216,133 +204,6 @@ function createErrorResult(message: string, params?: { title?: string; intro?: s
 			error: message,
 		}),
 	);
-}
-
-function defaultFreeTextPlaceholder(mode: FreeTextMode): string {
-	return mode === "editor" ? "Write your answer" : "Type your answer";
-}
-
-function defaultSomethingElsePlaceholder(mode: FreeTextMode): string {
-	return mode === "editor"
-		? "Write a different answer or explain why the options do not fit"
-		: "Type a different answer or explain why the options do not fit";
-}
-
-/**
- * Validate and normalize the model-provided tool input into a runtime shape.
- *
- * This keeps the UI code simple: the wizard only deals with already-trimmed strings,
- * resolved defaults, and explicit validation errors.
- */
-function normalizeQuestions(params: AskUserParams): { questions: AskUserQuestion[] } | { error: string } {
-	if (params.questions.length === 0) {
-		return { error: "Error: No questions provided" };
-	}
-
-	const seenQuestionIds = new Set<string>();
-	const normalizedQuestions: AskUserQuestion[] = [];
-
-	for (let index = 0; index < params.questions.length; index++) {
-		const inputQuestion = params.questions[index];
-		const questionNumber = index + 1;
-
-		if (isBlank(inputQuestion.id)) {
-			return { error: `Error: Question ${questionNumber} is missing a non-empty id` };
-		}
-		const questionId = inputQuestion.id.trim();
-		if (seenQuestionIds.has(questionId)) {
-			return { error: `Error: Duplicate question id: ${questionId}` };
-		}
-		seenQuestionIds.add(questionId);
-
-		if (isBlank(inputQuestion.prompt)) {
-			return { error: `Error: Question ${questionId} is missing a non-empty prompt` };
-		}
-		if (inputQuestion.options.length === 0) {
-			return { error: `Error: Question ${questionId} must provide at least one explicit option` };
-		}
-
-		const seenOptionValues = new Set<string>();
-		const options: AskUserOption[] = [];
-		for (const option of inputQuestion.options) {
-			if (isBlank(option.value)) {
-				return { error: `Error: Question ${questionId} contains an option with an empty value` };
-			}
-			if (isBlank(option.label)) {
-				return { error: `Error: Question ${questionId} contains an option with an empty label` };
-			}
-
-			const value = option.value.trim();
-			if (value === SOMETHING_ELSE_VALUE) {
-				return { error: `Error: Question ${questionId} uses reserved option value: ${SOMETHING_ELSE_VALUE}` };
-			}
-			if (seenOptionValues.has(value)) {
-				return { error: `Error: Question ${questionId} contains duplicate option value: ${value}` };
-			}
-			seenOptionValues.add(value);
-
-			const responseType = option.responseType ?? "select";
-			const hasFreeTextMode = option.freeTextMode !== undefined;
-			const hasFreeTextPlaceholder = !isBlank(option.freeTextPlaceholder);
-			if (responseType === "select" && (hasFreeTextMode || hasFreeTextPlaceholder)) {
-				return {
-					error: `Error: Question ${questionId} option ${value} cannot set freeTextMode/freeTextPlaceholder unless responseType is freeText`,
-				};
-			}
-
-			const normalizedOption: AskUserOption = {
-				value,
-				label: option.label.trim(),
-				description: isBlank(option.description) ? undefined : option.description!.trim(),
-				responseType,
-			};
-
-			if (responseType === "freeText") {
-				const freeTextMode = option.freeTextMode ?? "input";
-				normalizedOption.freeTextMode = freeTextMode;
-				normalizedOption.freeTextPlaceholder = isBlank(option.freeTextPlaceholder)
-					? defaultFreeTextPlaceholder(freeTextMode)
-					: option.freeTextPlaceholder!.trim();
-			}
-
-			options.push(normalizedOption);
-		}
-
-		const hasRecommendedValue = !isBlank(inputQuestion.recommendedOptionValue);
-		const hasRecommendationRationale = !isBlank(inputQuestion.recommendationRationale);
-		if (hasRecommendedValue !== hasRecommendationRationale) {
-			return {
-				error: `Error: Question ${questionId} must provide both recommendedOptionValue and recommendationRationale together`,
-			};
-		}
-
-		const recommendedOptionValue = hasRecommendedValue ? inputQuestion.recommendedOptionValue!.trim() : undefined;
-		const recommendedOption = recommendedOptionValue
-			? options.find((option) => option.value === recommendedOptionValue)
-			: undefined;
-		if (recommendedOptionValue && !recommendedOption) {
-			return {
-				error: `Error: Question ${questionId} recommends unknown explicit option value: ${recommendedOptionValue}`,
-			};
-		}
-
-		const somethingElseMode = inputQuestion.somethingElseMode ?? "input";
-		normalizedQuestions.push({
-			id: questionId,
-			label: isBlank(inputQuestion.label) ? questionId : inputQuestion.label!.trim(),
-			prompt: inputQuestion.prompt.trim(),
-			options,
-			somethingElseMode,
-			somethingElsePlaceholder: isBlank(inputQuestion.somethingElsePlaceholder)
-				? defaultSomethingElsePlaceholder(somethingElseMode)
-				: inputQuestion.somethingElsePlaceholder!.trim(),
-			recommendedOptionValue,
-			recommendationRationale: hasRecommendationRationale ? inputQuestion.recommendationRationale!.trim() : undefined,
-			recommendedOptionLabel: recommendedOption?.label,
-		});
-	}
-
-	return { questions: normalizedQuestions };
 }
 
 function createSelectListTheme(theme: Theme) {
@@ -474,8 +335,8 @@ class AskUserWizard extends Container implements Focusable {
 		this.addChild(new DynamicBorder((text: string) => this.theme.fg("accent", text)));
 		this.addChild(new Text(this.theme.fg("accent", this.theme.bold(this.titleText)), 1, 0));
 
-		if (!isBlank(this.intro)) {
-			this.addChild(new Text(this.theme.fg("muted", this.intro!.trim()), 1, 0));
+		if (this.intro?.trim()) {
+			this.addChild(new Text(this.theme.fg("muted", this.intro.trim()), 1, 0));
 		}
 
 		if (this.questions.length > 1) {
@@ -603,8 +464,12 @@ class AskUserWizard extends Container implements Focusable {
 			optionValue: option.value,
 			optionLabel: option.label,
 			responseType: option.responseType,
-			freeTextMode: option.freeTextMode,
-			freeTextPlaceholder: option.freeTextPlaceholder,
+			...(option.responseType === "freeText"
+				? {
+						freeTextMode: option.freeTextMode,
+						freeTextPlaceholder: option.freeTextPlaceholder,
+				  }
+				: {}),
 		}));
 
 		options.push({
@@ -882,12 +747,28 @@ export default function askUser(pi: ExtensionAPI) {
 	//       label: "Scope",
 	//       prompt: "How broad should the change be?",
 	//       options: [
-	//         { value: "small", label: "Small change" },
-	//         { value: "balanced", label: "Balanced change" },
-	//         { value: "broad", label: "Broader redesign" },
+	//         {
+	//           value: "small",
+	//           label: "Small change",
+	//           description: "Limit the implementation to the immediate need.",
+	//           responseType: "select",
+	//         },
+	//         {
+	//           value: "balanced",
+	//           label: "Balanced change",
+	//           description: "Address the need while keeping the scope focused.",
+	//           responseType: "select",
+	//         },
+	//         {
+	//           value: "archive-all",
+	//           label: "Archive all completed changes",
+	//           description: "Apply the bulk action explicitly as one fixed choice.",
+	//           responseType: "select",
+	//         },
 	//         {
 	//           value: "missing_case",
 	//           label: "The options are missing something",
+	//           description: "Explain what is missing or how the question should change.",
 	//           responseType: "freeText",
 	//           freeTextMode: "editor",
 	//           freeTextPlaceholder: "Explain what is missing or how the question should change",
@@ -904,17 +785,21 @@ export default function askUser(pi: ExtensionAPI) {
 		name: "ask_user",
 		label: "AskUser",
 		description:
-			"Ask the user one or more single-select clarifying questions in the TUI. The flow is synchronous and blocking, always includes a built-in Something else free-text path, and supports explicit free-text options plus recommended options with rationale.",
+			"Ask the user one or more single-select clarifying questions in the TUI. The flow is synchronous and blocking, always includes a built-in Something else free-text path, and supports strict explicit select/free-text option branches plus recommended options with rationale.",
 		promptSnippet:
-			"Ask the user one or more single-select questions in the TUI. The UI always includes a built-in Something else free-text path.",
+			"Ask the user one or more strict single-select questions in the TUI. Every explicit option needs responseType and description; free-text branches also need freeTextMode and freeTextPlaceholder. The UI always includes a built-in Something else free-text path.",
 		promptGuidelines: [
 			"Use ask_user when you need explicit user input to proceed and the decision can be expressed as one or more single-select questions.",
 			"Batch related clarifying questions into a single ask_user call instead of spreading them across multiple turns.",
 			"Keep ask_user explicit option lists concise, mutually clear, and ordered in the way you want the user to review them.",
+			"Every explicit option must include value, label, description, and responseType: use responseType=select for fixed choices or responseType=freeText with both freeTextMode and freeTextPlaceholder for text branches.",
+			"Never include freeTextMode or freeTextPlaceholder on responseType=select options, and do not omit responseType.",
+			"If ask_user returns a validation error, correct the reported option shape and do not retry the unchanged invalid payload.",
 			"ask_user always provides a built-in free-text Something else escape hatch, so do not add a generic fallback option yourself.",
 			"Use explicit ask_user options with responseType=freeText when you want a custom-labeled text branch in addition to the built-in Something else fallback.",
 			"Use ask_user.somethingElseMode and ask_user.somethingElsePlaceholder when you want to tune the built-in Something else fallback.",
 			"Use ask_user.recommendedOptionValue only when one explicit option is meaningfully preferable, and provide a brief ask_user.recommendationRationale.",
+			"For bulk workflows, add an explicit fixed option such as archive-all; never infer multiple selections from a free-text response.",
 			"Do not target the built-in Something else fallback with ask_user.recommendedOptionValue; recommendations should point only at explicit options.",
 		],
 		parameters: AskUserParamsSchema,

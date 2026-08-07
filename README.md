@@ -9,9 +9,40 @@ This repo is the canonical home for custom pi extensions that are loaded from `~
 Current extensions:
 
 - `ask-user.ts` — TUI clarification tool for structured user questions
+- `ask-user/validation.ts` — pure `ask_user` input normalization and validation
 - `permission-gate.ts` — top-level permission gate entrypoint
 - `permission-gate/` — supporting modules for the permission gate extension
 - `context-footer/` — two-row TUI footer with hard token-based context thresholds
+
+## `ask_user` option contract
+
+`ask_user` is TUI-only and presents explicit options as single-select branches. Every explicit option must include `value`, `label`, `description`, and `responseType`.
+
+Use exactly one of these shapes:
+
+```ts
+{
+  value: "recommended",
+  label: "Use the recommended version",
+  description: "Newest compatible version.",
+  responseType: "select",
+}
+```
+
+```ts
+{
+  value: "custom",
+  label: "Enter another version",
+  description: "Use a custom version.",
+  responseType: "freeText",
+  freeTextMode: "input", // or "editor"
+  freeTextPlaceholder: "Enter exact version",
+}
+```
+
+Do not omit `responseType`. Do not include `freeTextMode` or `freeTextPlaceholder` on `responseType: "select"` options. Explicit free-text options require both free-text fields. The built-in `Something else` fallback is added automatically to every question.
+
+For bulk workflows, add an explicit fixed option such as `archive-all`. Do not infer multiple selections from a free-text response; multi-select is not part of this API.
 
 ## Working model
 
@@ -36,11 +67,12 @@ Current extensions:
 At minimum:
 
 1. `pi --list-models` — confirms extensions still load
-2. `bash sync-extensions.sh` — updates the runtime extension directory
-3. `/reload` inside pi — reloads the runtime
-4. Run a focused manual sanity check for the changed extension
+2. `node --experimental-strip-types --test ask-user/validation.test.ts` — runs the pure ask-user contract tests
+3. `bash sync-extensions.sh` — updates the runtime extension directory
+4. `/reload` inside pi — reloads the runtime
+5. Run a focused manual sanity check for the changed extension
 
-For TUI-heavy extensions like `ask-user.ts`, prefer validating the real interaction flow in pi after reload.
+For TUI-heavy extensions like `ask-user.ts`, validate the real interaction flow in pi after reload, including explicit input/editor branches and the built-in fallback.
 
 ## Notes
 
