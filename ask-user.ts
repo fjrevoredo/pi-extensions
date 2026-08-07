@@ -21,8 +21,6 @@ import {
 	Key,
 	type KeybindingsManager,
 	matchesKey,
-	SelectList,
-	type SelectItem,
 	Spacer,
 	Text,
 	type TUI,
@@ -36,6 +34,7 @@ import {
 	type AskUserQuestion,
 	type FreeTextMode,
 } from "./ask-user/validation.ts";
+import { MultilineSelectList, type MultilineSelectItem } from "./ask-user/multiline-select-list.ts";
 
 /**
  * Structured answer returned by the tool.
@@ -72,9 +71,9 @@ interface FreeTextTarget {
 	placeholder: string;
 }
 
-/** UI-only option representation used by SelectList. */
+/** UI-only option representation used by MultilineSelectList. */
 interface DisplayOption {
-	item: SelectItem;
+	item: MultilineSelectItem;
 	optionValue: string;
 	optionLabel: string;
 	responseType: AskUserOption["responseType"];
@@ -234,7 +233,7 @@ class AskUserWizard extends Container implements Focusable {
 	// - review: final confirmation step for multi-question runs
 	private state: "select" | "free-text-input" | "free-text-editor" | "review" = "select";
 	private validationMessage: string | undefined;
-	private selectList: SelectList | null = null;
+	private selectList: MultilineSelectList | null = null;
 	private input: Input | null = null;
 	private editor: Editor | null = null;
 	private activeFreeTextTarget: FreeTextTarget | null = null;
@@ -386,13 +385,18 @@ class AskUserWizard extends Container implements Focusable {
 		this.buildFreeTextEditorState();
 	}
 
-	/** Render the option list for the current question. */
+	/**
+	 * Render the option list for the current question.
+	 * MultilineSelectList grows its shared label column from the 32-cell
+	 * baseline up to two-fifths of the available row, then wraps labels to
+	 * three lines before applying the final ellipsis fallback.
+	 */
 	private buildSelectState(question: AskUserQuestion): void {
 		const displayOptions = this.buildDisplayOptions(question);
-		const selectList = new SelectList(
+		const selectList = new MultilineSelectList(
 			displayOptions.map((option) => option.item),
-			Math.min(Math.max(displayOptions.length, 1), 8),
 			createSelectListTheme(this.theme),
+			this.keybindings,
 		);
 
 		const currentAnswer = this.answers.get(question.id);

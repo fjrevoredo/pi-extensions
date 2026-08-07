@@ -44,6 +44,10 @@ Do not omit `responseType`. Do not include `freeTextMode` or `freeTextPlaceholde
 
 For bulk workflows, add an explicit fixed option such as `archive-all`. Do not infer multiple selections from a free-text response; multi-select is not part of this API.
 
+### Option display behavior
+
+Long labels use a shared primary column. The column starts at 32 cells when the terminal permits it, grows when needed up to two-fifths of the available row width, wraps labels to at most three lines, and uses `...` only when content still does not fit. The list keeps one logical option per selection and scrolls by option rather than by wrapped line.
+
 ## Working model
 
 - Edit extensions here first.
