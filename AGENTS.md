@@ -76,6 +76,10 @@ For interactive extensions, validate the real user flow in pi instead of relying
 - Permission-related runtime extension code.
 - Be conservative when changing prompts, allow/deny behavior, or safety checks.
 
+### `context-footer/`
+- TUI-only custom footer with project metadata, agent state, and hard token-based context severity thresholds.
+- Keep formatter tests and the interactive footer behavior aligned when changing layout or context display.
+
 ## Sync note
 
 This repo is authoritative, but pi loads from `~/.pi/agent/extensions/`.

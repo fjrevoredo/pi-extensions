@@ -11,6 +11,7 @@ Current extensions:
 - `ask-user.ts` — TUI clarification tool for structured user questions
 - `permission-gate.ts` — top-level permission gate entrypoint
 - `permission-gate/` — supporting modules for the permission gate extension
+- `context-footer/` — two-row TUI footer with hard token-based context thresholds
 
 ## Working model
 
