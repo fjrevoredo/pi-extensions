@@ -113,6 +113,7 @@ None.
 - Status: IN PROGRESS
 - Purpose: Remove the two latent defects that keep the repository from having a single working test command.
 - Exit Criteria: `node --test` at the repository root passes with zero failures; no extension depends on `tsx`; `npm run typecheck` is clean.
+- **Correction (execution):** the typecheck half of this exit criterion cannot be met in this milestone. The one remaining error is `TS7016` on `permission-gate.ts` importing the untyped `./permission-gate/core.mjs`, and the plan assigns that port to Task 3.3. The test and `tsx` criteria are met here; typecheck goes clean at Task 3.3.
 
 #### Task 2.1: Add explicit `.ts` extensions and drop `tsx` (R3, T1)
 
@@ -129,7 +130,7 @@ None.
 
 #### Task 2.2: Replace parameter properties with explicit assignment (R2)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Every module is loadable by Node's strip-only type stripping, and `MultilineSelectList` gains the tests that constraint was blocking.
 - Steps:
   1. In `ask-user/multiline-select-list.ts`, rewrite the three-parameter constructor (`items`, `theme`, `keybindings`) as declared `private readonly` fields plus explicit assignments in the constructor body.
@@ -139,6 +140,7 @@ None.
   5. Move the new test file into `ask-user/test/` if Task 3.1 has already run; otherwise Task 3.1 moves it along with the others.
 - Validation: `node -e "import('./ask-user/multiline-select-list.ts').then(()=>console.log('OK'))"` prints `OK`; `npm run typecheck` reports no `TS1294`; `node --test` at the repository root passes with zero failures and the new file contributes at least 5 tests.
 - Notes: Do not restructure the constructor *signature* here — Task 6.4 handles that separately. Rules `R2`, `T3`.
+- Result: All 10 `TS1294` errors cleared; the strip-only load check prints `OK`; root `node --test` passes 44/44 with the new file contributing 5 tests.
 
 ### Milestone 3: Layout And Language
 

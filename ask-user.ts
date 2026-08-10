@@ -250,16 +250,34 @@ class AskUserWizard extends Container implements Focusable {
 		}
 	}
 
+	// Written out rather than declared as parameter properties: parameter properties
+	// are not erasable syntax, and a module containing them cannot be loaded by
+	// node --test at all (R2).
+	private readonly tui: TUI;
+	private readonly theme: Theme;
+	private readonly keybindings: KeybindingsManager;
+	private readonly done: (details: AskUserDetails) => void;
+	private readonly title: string | undefined;
+	private readonly intro: string | undefined;
+	private readonly questions: AskUserQuestion[];
+
 	constructor(
-		private readonly tui: TUI,
-		private readonly theme: Theme,
-		private readonly keybindings: KeybindingsManager,
-		private readonly done: (details: AskUserDetails) => void,
-		private readonly title: string | undefined,
-		private readonly intro: string | undefined,
-		private readonly questions: AskUserQuestion[],
+		tui: TUI,
+		theme: Theme,
+		keybindings: KeybindingsManager,
+		done: (details: AskUserDetails) => void,
+		title: string | undefined,
+		intro: string | undefined,
+		questions: AskUserQuestion[],
 	) {
 		super();
+		this.tui = tui;
+		this.theme = theme;
+		this.keybindings = keybindings;
+		this.done = done;
+		this.title = title;
+		this.intro = intro;
+		this.questions = questions;
 		this.titleText = title?.trim() || "Ask User";
 		this.rebuild();
 	}

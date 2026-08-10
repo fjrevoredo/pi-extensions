@@ -23,11 +23,18 @@ export class MultilineSelectList implements Component {
 	onSelect?: (item: MultilineSelectItem) => void;
 	onCancel?: () => void;
 
-	constructor(
-		private readonly items: MultilineSelectItem[],
-		private readonly theme: SelectListTheme,
-		private readonly keybindings: KeybindingsManager,
-	) {}
+	// Written out rather than declared as parameter properties: parameter properties
+	// are not erasable syntax, and a module containing them cannot be loaded by
+	// node --test at all (R2).
+	private readonly items: MultilineSelectItem[];
+	private readonly theme: SelectListTheme;
+	private readonly keybindings: KeybindingsManager;
+
+	constructor(items: MultilineSelectItem[], theme: SelectListTheme, keybindings: KeybindingsManager) {
+		this.items = items;
+		this.theme = theme;
+		this.keybindings = keybindings;
+	}
 
 	setSelectedIndex(index: number): void {
 		this.selectedIndex = Math.max(0, Math.min(index, Math.max(0, this.items.length - 1)));
