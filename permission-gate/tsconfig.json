@@ -3,5 +3,5 @@
 	"compilerOptions": {
 		"composite": true
 	},
-	"include": ["*.ts", "test/*.ts"]
+	"include": ["../permission-gate.ts", "*.ts", "test/*.ts"]
 }

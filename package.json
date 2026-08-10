@@ -1,0 +1,19 @@
+{
+	"name": "pi-extensions",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"test": "node --test",
+		"typecheck": "tsc --build",
+		"format": "biome format --write .",
+		"lint": "biome check ."
+	},
+	"devDependencies": {
+		"@earendil-works/pi-ai": "0.84.1",
+		"@earendil-works/pi-coding-agent": "0.84.1",
+		"@earendil-works/pi-tui": "0.84.1",
+		"@types/node": "24.12.4",
+		"typebox": "1.3.7",
+		"typescript": "5.9.3"
+	}
+}

@@ -41,7 +41,11 @@ sync_extensions() {
     --exclude
     '*.test.ts'
     --exclude
-    'tsconfig.json'
+    'tsconfig*.json'
+    --exclude
+    '/package.json'
+    --exclude
+    '*.tsbuildinfo'
     --exclude
     'AGENTS.md'
     --exclude

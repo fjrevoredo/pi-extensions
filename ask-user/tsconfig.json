@@ -3,5 +3,5 @@
 	"compilerOptions": {
 		"composite": true
 	},
-	"include": ["*.ts", "test/*.ts"]
+	"include": ["../ask-user.ts", "*.ts", "test/*.ts"]
 }

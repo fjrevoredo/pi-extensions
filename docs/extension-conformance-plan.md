@@ -90,7 +90,7 @@ None.
 
 #### Task 1.2: Convert the repository to a single root workspace (C1, C3, T9)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: One dependency set at the root; every extension file covered by a `tsconfig.json`; version drift structurally impossible.
 - Steps:
   1. Create root `package.json` per standard §11 `C1`: `private: true`, **`"type": "module"`**, scripts `test` (`node --test`), `typecheck` (`tsc --build`), `format` (`biome format --write .`), `lint` (`biome check .`). Put all four `@earendil-works/*` packages at `0.84.1` plus `typescript`, `@types/node`, and `typebox` in `devDependencies`. Pin every version exactly — no ranges. `"type": "module"` is load-bearing, not cosmetic: with `module: NodeNext` and `verbatimModuleSyntax`, omitting it makes TypeScript treat every `.ts` file as CommonJS and every file fails with `TS1287: A top-level 'export' modifier cannot be used on value declarations in a CommonJS module`.
@@ -106,6 +106,7 @@ None.
   8. Update `sync-extensions.sh` exclusions so none of the new tooling reaches the runtime directory (`L7`). The current list excludes the literal string `tsconfig.json`, which does **not** cover `tsconfig.base.json`. Change that entry to `tsconfig*.json` and add `/package.json` (leading slash anchors it to the transfer root, so a future extension with a genuine runtime dependency can still carry its own) and `*.tsbuildinfo`.
 - Validation: `npm run typecheck` executes and reports only (a) the three known `TS2835` extensionless-import errors in `context-footer` and (b) any genuine pre-existing errors in the 2,211 previously unchecked lines of `ask-user`/`permission-gate`. No `TS1287` anywhere — if you see it, `"type": "module"` is missing from the root `package.json`. `bash sync-extensions.sh --dry-run` lists no `package.json`, no `tsconfig*.json`, no `*.tsbuildinfo`, and no `node_modules` entries. `git status` shows no `.tsbuildinfo` files as untracked.
 - Notes: This task is expected to *surface* errors, not end clean — `ask-user.ts` and `permission-gate/` have never been typechecked. Record what it finds; fix genuine type errors here without weakening types or adding `any` (`R6`), and leave the `TS2835` errors for Task 2.1.
+- Result: 14 errors surfaced, all already owned by a later task — no `TS1287`, and no genuine unowned type errors in the 2,211 previously unchecked lines. Breakdown: 10 × `TS1294` (parameter properties: 7 in `ask-user.ts`, 3 in `ask-user/multiline-select-list.ts`) → Task 2.2; 3 × `TS2835` (extensionless imports in `context-footer`) → Task 2.1; 1 × `TS7016` (`permission-gate.ts` importing the untyped `./permission-gate/core.mjs`) → Task 3.3, which ports it to `.ts`. Nothing needed fixing here.
 
 ### Milestone 2: Make The Suite Green
 
