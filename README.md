@@ -61,7 +61,16 @@ Then `/reload` inside pi and run a focused manual check of whatever changed.
 
 `node --test` is the only test runner. It needs no flags on Node 24 and takes no directory argument — run it bare from the root, or pass a file glob such as `node --test ask-user/test/*.test.ts`.
 
-The first three commands are also the pre-commit hook, so in practice only the last three are manual. `git commit --no-verify` skips the hook for a deliberate WIP commit.
+The first three commands are also the pre-commit hook, so in practice only the last one is manual. `git commit --no-verify` skips the hook for a deliberate WIP commit — it does not skip CI.
+
+## CI
+
+`.github/workflows/ci.yml` runs one job, `checks`, on every push to `master` and every pull request. It re-runs the first three commands above as separate steps, so one run reports all three failures rather than only the first, and adds two checks that only make sense remotely:
+
+- `.github/scripts/check-runtime-hygiene.sh` syncs into a throwaway `HOME` and asserts that only non-test TypeScript reached the runtime directory — and that no extension entrypoint was dropped (`L7`). Run it locally any time you change the file layout.
+- `.github/scripts/check-hook-parity.sh` asserts that the pre-commit hook and the workflow run the same npm scripts.
+
+The pre-commit hook needs `git config core.hooksPath .githooks` in every clone and so is absent by default; CI is the layer that always runs. See §14 of the standard.
 
 For TUI-heavy extensions like `ask-user`, automated tests do not replace validating the real interaction flow in pi after reload, including explicit input/editor branches and the built-in fallback.
 

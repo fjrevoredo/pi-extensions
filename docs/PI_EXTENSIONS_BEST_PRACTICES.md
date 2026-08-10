@@ -47,14 +47,15 @@ context-footer/          ← the extension is the directory
 **L6 — SHOULD: every extension has a `README.md`** covering purpose, agent-facing contract, runtime limitations (e.g. TUI-only), and how to test it.
 
 **L7 — MUST: nothing reaches the runtime directory except what pi loads.**
-Test files, `tsconfig*.json`, the root `package.json`, lockfiles, `biome.json`, `.githooks/`, `*.tsbuildinfo`, and docs must be excluded by `sync-extensions.sh`. When you add a new kind of non-runtime file, update the sync exclusions in the same commit.
+Test files, `tsconfig*.json`, the root `package.json`, lockfiles, `biome.json`, `.githooks/`, `.github/`, `*.tsbuildinfo`, and docs must be excluded by `sync-extensions.sh`. When you add a new kind of non-runtime file, update the sync exclusions in the same commit.
 
-Two exclusion mechanics that are easy to get wrong, both of which have already bitten this repo:
+Three exclusion mechanics that are easy to get wrong, all of which have already bitten this repo:
 
 - **Glob, not literal.** `tsconfig.json` as an exclusion does *not* cover `tsconfig.base.json`. Use `tsconfig*.json`.
 - **Anchor root-only exclusions with a leading slash.** `/package.json` excludes the root manifest while still letting a future extension that genuinely needs a runtime `package.json` carry its own. An unanchored `package.json` would silently strip that too.
+- **A pattern containing a slash matches the path *tail*, not the transfer root** — unless it carries a leading `/`. So `--exclude '*/test/'` drops `a/test/` at *any* depth but never a `test/` directory at the repository root, which is exactly where an L2 root-level single-file extension would keep its tests. A bare `--exclude 'test/'` matches the final component anywhere and is the right form for a directory name that should never sync. Measured on both GNU rsync 3.4.3 and macOS openrsync, which agree (§17).
 
-Verify with `bash sync-extensions.sh --dry-run` rather than reasoning about the patterns (C5).
+Verify with `bash sync-extensions.sh --dry-run` rather than reasoning about the patterns (C5). CI now asserts the outcome as well: `.github/scripts/check-runtime-hygiene.sh` syncs into a throwaway `HOME` and checks what actually landed, in both directions (§14).
 
 ---
 
@@ -308,6 +309,8 @@ One `npm install`, one dependency set, one place to bump on a pi upgrade. An ext
 **C2 — MUST: all `@earendil-works/*` packages are pinned to the exact version of the installed `pi` runtime.**
 The installed runtime is **`pi 0.84.1`**, and the single root `package.json` pins every `@earendil-works/*` package to it. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
 
+**`package-lock.json` is tracked, and `engines.node` is `^24`.** Pinning the seven direct dependencies is not the same as pinning what installs: 252 packages resolve today, including native binaries and the whole AWS/Google/OpenAI/Mistral surface `pi-coding-agent` pulls in, and all of it floated on every `npm install` — the drift this rule exists to prevent, one level down. CI installs with `npm ci`, which additionally fails when the manifest and the lock disagree. `engines.node` is `^24` rather than `>=24` deliberately: with `>=`, `setup-node` resolves to the newest Node available and would silently move CI off the runtime every §17 fact was measured against. It is the repository's only machine-readable Node pin; a second one in `.nvmrc` was rejected.
+
 **C3 — MUST: each extension has a `tsconfig.json` extending the root `tsconfig.base.json`.**
 
 ```json
@@ -382,6 +385,8 @@ To suppress a single genuine finding in place, `// biome-ignore <rule>: <reason>
 
 **C5 — SHOULD: review `sync-extensions.sh --dry-run` whenever the file layout changes**, and update the exclusion list in the same commit (L7).
 
+CI asserts the *outcome* of the exclusion list (§14), but that does not retire this rule. The hygiene check can only tell you the runtime directory still contains what it should; it cannot tell you whether a change you meant to make actually happened, or whether a file you expected to sync is now missing for a reason the check considers legal. Reading the dry-run is still how an **intended** change is confirmed.
+
 **C6 — SHOULD: keep lockfiles and `node_modules/` out of the runtime directory** unless an extension has a true runtime dependency (R5).
 
 ---
@@ -420,21 +425,45 @@ Steps 1–3 are also run by the pre-commit hook (§14) and by CI, so in practice
 
 ## 14. Enforcement
 
-A tracked pre-commit hook runs the mechanical checks. Tracked, not `.git/hooks/`, so it is version-controlled and applies to every clone:
+Enforcement is two layers: a **local pre-commit hook** for speed, and **CI** for coverage. The reason either exists rather than relying on the §13 checklist is that agents are the main contributors here, and a checklist in a document is advisory to them while a hook is not. This repository drifted three separate ways (two pi versions, two indent styles, three test conventions) under a human-protocol regime.
+
+### Layer 1 — the pre-commit hook
+
+Tracked in `.githooks/`, not `.git/hooks/`, so it is version-controlled and reviewable:
 
 ```bash
-# .githooks/pre-commit  — enable once with:
+# .githooks/pre-commit  — enable once per clone with:
 #   git config core.hooksPath .githooks
 #!/usr/bin/env bash
 set -euo pipefail
 npm run typecheck
-node --test
-npx biome check .
+npm test
+npm run lint
 ```
 
-Measured wall-clock on this repo: ~3 seconds. The reason this exists rather than relying on the §13 checklist is that agents are the main contributors here, and a checklist in a document is advisory to them while a hook is not. This repository drifted three separate ways (two pi versions, two indent styles, three test conventions) under a human-protocol regime.
+Measured wall-clock on this repo: ~3 seconds.
+
+**Its honest limitation:** `core.hooksPath` is per-clone *local* config, and local config cannot be committed. A fresh clone has no hook until someone runs that command, and neither does a new agent worktree — which is to say, the hook is absent exactly where agents work. Being tracked makes the hook *reviewable by* every clone; it does not make it *run in* every clone. The hook is therefore a fast local convenience, not the gate.
 
 `--no-verify` remains available for deliberate WIP commits.
+
+### Layer 2 — CI
+
+`.github/workflows/ci.yml`, one job named `checks`, on every push to `master` and every pull request. It runs the same three npm scripts as separate steps — so one run reports all three failures rather than only the first — plus two hygiene checks that only make sense in CI.
+
+**Drift between the two layers is controlled by mechanism, not by discipline.** Neither file defines a command: the hook calls the npm scripts and so does the workflow, so there is nothing in either file to drift. `.github/scripts/check-hook-parity.sh` then asserts that they invoke the same set, because this repository's own finding is that a rule nothing asserts drifts (§16) — and the hook had in fact already drifted from the scripts once, calling `node --test` and `npx biome check .` directly.
+
+**`.github/scripts/check-runtime-hygiene.sh` is the strongest argument for CI existing at all.** L7 is a MUST that was previously verified by a human reading a `--dry-run`. `sync-extensions.sh` honours an overridden `HOME` (§17), so the rule became mechanically checkable: sync into a throwaway `HOME`, then assert a **positive** invariant — every surviving file is a non-test `.ts`, no non-runtime directory exists, and every `<ext>/index.ts` in `git ls-files` survived.
+
+Three properties of that check are deliberate:
+
+- **Positive, not a denylist.** A denylist only catches file kinds someone already thought of, and the next non-runtime file is by definition one nobody has. The positive form holds exactly today and still permits L2's root-level `<name>.ts` shape.
+- **`find`, not parsed `--itemize-changes`.** The itemize format is not portable between macOS openrsync and GNU rsync.
+- **Both directions.** The reverse assertion — that no entrypoint was *dropped* — catches an over-broad exclusion silently deleting a whole extension, which nothing else in the repository catches.
+
+It is CI-only because it writes a real directory tree to a real temporary `HOME`; that is fine in a disposable runner and wrong in a ~3-second pre-commit hook.
+
+Branch protection on `master` requires the `checks` status. Required checks only bite on pull requests, so pushing straight to `master` makes CI a detector rather than a gate — a deliberate choice, and the CI-level analogue of the `--no-verify` escape hatch this section already accepts by name.
 
 ---
 
@@ -496,7 +525,7 @@ Assessed against this document as of the current working tree, **after** the §1
 | C4 formatting | ✓ | ✓ | ✓ | deferred (§15) |
 | D1–D5 comments | ✓ | ✓ reference implementation | ✓ | ✓ |
 
-Whole-repo state: `npm run typecheck` clean, `node --test` **71 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json`, one pinned pi version, and a tracked pre-commit hook running all three.
+Whole-repo state: `npm run typecheck` clean, `node --test` **71 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
 
 The two `advisor` rows marked *deferred* are deliberate, not outstanding: `advisor` is bound by the structural rules and meets all of them; its style pass waits until the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff. `advisor/` is excluded from the Biome formatter and linter until then.
 
@@ -564,14 +593,33 @@ The second half of that claim originally read "extension load by `pi --list-mode
 
 **A pre-commit hook rather than a checklist alone (§14).** The deciding argument is that agents are the main contributors to this repository, and a document is advisory to an agent while a hook is not. This repo drifted three separate ways under a human-protocol regime.
 
+**CI in addition to the hook, reversing the §19 non-goal.** "No CI" was justified by "enforcement is the local pre-commit hook", and that justification does not survive inspection: `core.hooksPath` is per-clone local config that cannot be committed, so the hook is absent in a fresh clone and in every new agent worktree — absent, that is, exactly where agents work. The second deciding argument is that CI makes **L7 mechanically checkable for the first time**: `sync-extensions.sh` honours an overridden `HOME` (§17), so "nothing reaches the runtime directory except what pi loads" stops being a rule verified by reading a dry-run. A rule this document calls MUST while nothing checks it is the exact failure mode §16 already recorded twice.
+
+**Three CI steps rather than CI invoking the hook.** Calling `.githooks/pre-commit` from the workflow would guarantee parity in one line, but `set -euo pipefail` means the first failure hides the other two, and a remote run that reports one problem per push is expensive. Separate steps, each guarded with `!cancelled()`, report all three. Parity is recovered by making both files pure call sites and asserting it (§14).
+
+Rejected, with reasons:
+
+- **Path filters on the triggers.** They make a required status check unsatisfiable on a docs-only pull request, which blocks the merge until someone manually overrides — an absurd trade for three seconds of checks.
+- **An OS matrix.** `advisor/test/path-access.test.ts` calls `symlink()`, which needs privileges on Windows; a macOS runner costs 10× to re-test what the developer's own machine covers on every commit. Useful side effect of the split: local runs exercise macOS openrsync, CI exercises GNU rsync 3.x, and the L7 exclusion list is confirmed against both.
+- **A Node matrix.** See §19 — Node 24's semantics are the test strategy, not a variable.
+- **`npm audit`.** Every dependency is dev-only, nothing ships, and nothing processes untrusted input. A new advisory would redden CI with no code change, and a gate that fails without a change having been made is a broken gate that trains people to ignore it.
+- **A dependency-update bot.** See §19 — C2 pins to the installed runtime.
+- **`biome ci` instead of `biome check`.** It would differ from what the hook runs, reintroducing by hand the drift the call-site design removes.
+- **A status badge.** The repository is private; the badge endpoint is unauthenticated and would render broken for everyone.
+- **Anything that builds, versions, publishes, or deploys.** See §19.
+
 ---
 
 ## 19. Non-goals
 
 Deliberately absent. Do not add these without a decision.
 
+**One entry here has been reversed by a recorded decision.** "No CI" was a non-goal and is no longer: CI was added, and the reasoning is in §18 and §14. That is what "do not add these without a decision" asks for — the entry is replaced rather than quietly deleted, so the reversal is visible to whoever reads this list next.
+
 - **No coverage percentage target.** T3 covers core decision logic and explicitly not the shell. A global percentage would push toward testing the wiring, which is where the T4 harness already does the useful work.
-- **No CI.** Enforcement is the local pre-commit hook (§14). These extensions have no build, no deploy, and one consumer.
+- **No release, publish, or deploy pipeline.** These extensions have no build artifact, no version, and one consumer; they are delivered by `rsync`. CI checks the tree and stops there.
+- **No CI matrix.** One OS and one Node major. Node 24's semantics *are* the test strategy here — R2's erasable syntax and R3's explicit extensions exist because of what Node 24 does and does not do (§17) — so a matrix would test configurations the rules are not written for. `ubuntu-latest` only, pinned by `engines.node` at `^24`.
+- **No dependency-update bot.** C2 requires every `@earendil-works/*` package to move with the *installed* pi runtime, and upgrading pi is a defined procedure (C2, N1), not a version bump. A bot's pull requests would always be closed unmerged.
 - **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs).
 - **No behaviour changes as part of conformance work.** The §15 migration moves, renames, and reformats. If a migration step wants to change what an extension does, that is a separate commit.
 

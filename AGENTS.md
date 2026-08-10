@@ -39,14 +39,17 @@ git config core.hooksPath .githooks
 ```
 
 The second enables the pre-commit hook (§14). `core.hooksPath` is per-clone local config that
-cannot be committed, which is the only reason this command needs documenting at all.
+cannot be committed — which is why this command needs documenting, and also why the hook is
+*not* the gate. **If you are working in a fresh clone or a new worktree and have not run it,
+you have no hook.** The hook is a ~3-second local convenience; CI is what always runs.
 
 ## Working in this repo
 
 - One concern per commit, citing the rule IDs it satisfies.
 - Bring code into conformance as you touch it. Do not let a new file match old habits.
-- The hook is the enforcement, not good intentions. If a check blocks you, fix the code —
-  do not weaken the rule. `--no-verify` is for deliberate WIP commits only.
+- The hook **and CI** are the enforcement, not good intentions. If a check blocks you, fix the
+  code — do not weaken the rule. `--no-verify` is for deliberate WIP commits only, and it
+  skips the hook, not CI: the same three checks run again in `.github/workflows/ci.yml`.
 - Prefer small, reviewable changes and explicit contracts over clever behaviour.
 - Do not leave temporary debug code, scratch files, or dead paths behind.
 
@@ -54,6 +57,16 @@ Three things about a **new extension** are easy to forget, and every one of them
 silently rather than loudly: its `references` entry in the root `tsconfig.json` (`C3`), its
 `README.md` (`L6`), and any `sync-extensions.sh` exclusion it needs for a new kind of
 non-runtime file (`L7`, `C5`).
+
+The third is the one that keeps happening, and not only for extensions — `.githooks/` needed
+its own explicit exclusion, and so did `.github/`. Any new top-level directory does. You can
+check the outcome locally instead of reasoning about rsync patterns:
+
+```bash
+bash .github/scripts/check-runtime-hygiene.sh
+```
+
+It syncs into a throwaway `HOME` and asserts what landed, in both directions. CI runs it too.
 
 Two more worth knowing before you go looking: the tool schema and prompt text are an
 extension's real public API, so a schema change is a breaking change (§6); and upgrading pi
