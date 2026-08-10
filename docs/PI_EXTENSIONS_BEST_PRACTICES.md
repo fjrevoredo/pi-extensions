@@ -110,7 +110,7 @@ Every extension splits into a *core* that is pure (no `pi`, no `ctx`, no TUI, no
 The one reasonable exception is a pure measurement utility with no side effects (`visibleWidth`, `truncateToWidth`). Better still, inject it: `option-layout.ts` already does this through its `TextMetrics` interface, which is why it is testable with no pi packages present at all.
 
 **S3 — SHOULD: UI components stay humble.**
-A `Component` / wizard / footer renderer may hold interaction state and translate events into calls on the core. It must not decide *what the answer is*. Concretely: `AskUserWizard.buildDisplayOptions()` and `getFooterHint()` are formatting decisions that belong in a core module; `handleInput()` dispatching to a state machine is legitimately in the component.
+A `Component` / wizard / footer renderer may hold interaction state and translate events into calls on the core. It must not decide *what the answer is*. Concretely: `buildDisplayOptions()` was a formatting decision living in `AskUserWizard` and now sits in `ask-user/display.ts`; `handleInput()` dispatching to a state machine is legitimately in the component, and so is `getFooterHint()`, which only composes the injected theme with resolved keybindings.
 
 **S4 — SHOULD: express the core as data in / data out.**
 Prefer functions that take a value and return a value over methods that mutate instance state. `normalizeQuestions(params) → { questions } | { error }` is the model: total, deterministic, trivially testable.
@@ -141,10 +141,10 @@ Clocks, randomness, `process.env`, and `cwd` are parameters with defaults, not f
 **F1 — SHOULD: name the default export** — `export default function askUser(pi: ExtensionAPI)` rather than an anonymous function. Stack traces and debug logs get much better.
 **F2 — SHOULD: export only what is used outside the module**, and use inline `export` consistently rather than a trailing `export { … }` block.
 **F3 — SHOULD: at most three positional parameters; beyond that take a single options object.**
-`AskUserWizard`'s seven-parameter constructor is the counter-example: `(tui, theme, keybindings, done, title, intro, questions)` cannot be called correctly without checking the definition. Prefer `constructor(deps: WizardDeps)`.
+`AskUserWizard` was the counter-example: a seven-parameter constructor, `(tui, theme, keybindings, done, title, intro, questions)`, that could not be called correctly without checking the definition and whose two adjacent `string | undefined` parameters were silently swappable. It now takes `constructor(deps: WizardDeps)`.
 **F4 — SHOULD: functions that can fail return a discriminated union**, not `undefined`-means-error. `{ option } | { error }` beats `Option | undefined`.
 **F5 — SHOULD: keep functions under ~40 lines and one level of abstraction.**
-`context-footer`'s `render()` mixes segment construction with a triple-nested responsive-fallback search; that search is a pure function over candidate segment lists and belongs in `format.ts`.
+`context-footer`'s `render()` used to mix segment construction with a triple-nested responsive-fallback search. That search is a pure function over candidate segment lists and now lives in `format.ts` as `findFittingCombination()`; `render()` builds candidates and calls it.
 **F6 — SHOULD: no exported function mutates its arguments.**
 
 ---
@@ -233,7 +233,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 
 **U4 — SHOULD: use theme semantic colors; never hard-code ANSI.** Where no semantic color fits, document the substitution at the call site (`context-footer` borrowing `mdHeading` for orange is the model).
 
-**U5 — SHOULD: derive key hints from the injected `KeybindingsManager` via `keyHint()`/`keyText()`** rather than hard-coding them. Currently unmet: `keyHint`/`keyText` appear nowhere in the repo and `ask-user.ts` hard-codes four hint strings, so a user with custom keybindings is shown wrong hints.
+**U5 — SHOULD: derive key hints from the injected `KeybindingsManager` via `keyHint()`/`keyText()`** rather than hard-coding them, so a user with custom keybindings is not shown wrong hints. `ask-user`'s `getFooterHint()` is the pattern. Note that `keyHint()` colours the key and its description itself, so do not wrap its output in another `theme.fg(...)`. An affordance matched with `matchesKey(...)` rather than a named binding has no id to resolve — use `rawKeyHint(key, description)` for it rather than dropping it from the hint line.
 
 **U6 — MUST: propagate `focused` to the active child component.** Without it IME cursor placement breaks — a real input failure, not cosmetic.
 
@@ -250,7 +250,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 No `tsx`, no `vitest`, no bespoke runners. Verified on Node 24: bare `node --test` discovers `**/*.test.ts` and strips types with no flag; a *directory argument* does not work (`node --test test/` fails to resolve); `--experimental-strip-types` is obsolete.
 
 **T2 — MUST: `node --test` at the repository root passes.**
-This is the whole-repo gate. Across the three production extensions it currently reports **16 passing / 2 failing out of 18**, and both failures are R3 violations rather than real defects. (The root run also picks up `advisor/`, whose count moves while that extension is in flight.) Once green, keep it green.
+This is the whole-repo gate. It currently reports **71 passing / 0 failing** across all four extensions. It is green; keep it green. The pre-commit hook (§14) enforces this.
 
 **T3 — SHOULD: cover all core-module decision logic.**
 Validation, policy matching, layout arithmetic, threshold logic, and formatting each get direct tests. Coverage of the shell is not expected.
@@ -297,7 +297,7 @@ The repository is a **single root workspace**. Every dependency here is dev-only
 One `npm install`, one dependency set, one place to bump on a pi upgrade. An extension that genuinely needs a runtime dependency **MAY** carry its own `package.json` with that dependency in `dependencies` — and then L7 and R5 both apply.
 
 **C2 — MUST: all `@earendil-works/*` packages are pinned to the exact version of the installed `pi` runtime.**
-The installed runtime is **`pi 0.84.1`**. `advisor` matches it; `context-footer` pins `0.80.10` and must be bumped, so it is currently typechecked against a runtime it does not execute on. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
+The installed runtime is **`pi 0.84.1`**, and the single root `package.json` pins every `@earendil-works/*` package to it. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
 
 **C3 — MUST: each extension has a `tsconfig.json` extending the root `tsconfig.base.json`.**
 
@@ -341,7 +341,15 @@ This baseline was run against `context-footer` before being adopted: it reports 
 }
 ```
 
-Tabs, indent width 3, line width 120 — identical to upstream, so code moves between repos without reformat noise. The TypeScript files already use tabs; `permission-gate`'s two-space `.mjs` files are the only outlier and are being ported anyway (R1).
+Tabs, indent width 3, line width 120 — identical to upstream, so code moves between repos without reformat noise.
+
+Three things the installed Biome (2.5.7) forces, which the snippet above predates:
+
+- `linter.rules.recommended: true` is **deprecated** and warns. Write `"rules": { "preset": "recommended" }` instead — same rule set, current key.
+- Exclusions go in `files.includes` with `!`-prefixed entries (Biome 2.x), not `files.ignore` (1.x). Check the installed Biome's own schema before writing them.
+- **`biome.json` cannot carry comments** — only `biome.jsonc` can. Adding one silently invalidates the config, at which point Biome falls back to its defaults and starts checking directories you meant to exclude. Rationale for a disabled rule therefore belongs in `AGENTS.md`, not inline.
+
+Two `recommended` rules are turned off in this repo, both deliberately: `noExplicitAny` for test files only (R6 already permits it in fakes), and `noNonNullAssertion` repo-wide (Biome's only offered fix is `?.`, which it marks *unsafe* because it short-circuits where the assertion would throw).
 
 **C5 — SHOULD: review `sync-extensions.sh --dry-run` whenever the file layout changes**, and update the exclusion list in the same commit (L7).
 
@@ -402,6 +410,8 @@ Measured wall-clock on this repo: ~3 seconds. The reason this exists rather than
 
 ## 15. Migration plan
 
+**Carried out.** All eight steps below are complete, together with the §14 hook and the deferred quality items. The execution record — including every deviation, correction, and finding — is `docs/extension-conformance-plan.md`. §16 describes the resulting state. The table is kept here because the *sequencing rationale* is still the guidance for any future migration of this kind.
+
 Ratified sequence — one concern per commit, cheapest and lowest-risk first, reformat last so no file is touched twice. Each step is independently revertible; stopping part-way leaves the repo consistent.
 
 | # | Rules | Change | Verify |
@@ -423,35 +433,48 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 
 ## 16. Conformance of the current extensions
 
-Assessed against this document as of the current working tree, before the §15 migration.
+Assessed against this document as of the current working tree, **after** the §15 migration. The record of how it was carried out is `docs/extension-conformance-plan.md`.
 
-| Rule area | `ask-user` | `permission-gate` | `context-footer` |
-|---|---|---|---|
-| L1 directory layout | ✗ split entrypoint | ✗ split entrypoint | ✓ |
-| L5 tests under `test/` | ✗ co-located | ✗ no test dir | ✓ |
-| R1 TypeScript | ✓ | ✗ `.mjs` + JSDoc | ✓ |
-| R2 erasable syntax | ✗ parameter properties (×2 files) | ✓ | ✓ |
-| R3 explicit `.ts` imports | ✓ | n/a | ✗ extensionless |
-| S1 pure core | ✓ `validation.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` |
-| S3 humble UI | ~ display/format logic in the wizard | ✓ | ~ fallback search inside `render()` |
-| A1–A11 agent contract | ✓ reference implementation | n/a (no tool) | n/a |
-| E1–E7 lifecycle | ✓ stateless per call | ✓ | ✓ generation guard |
-| P1–P6 safety | n/a | ✓ reference implementation | n/a |
-| U5 key hints | ✗ 4 hard-coded strings | n/a (built-in dialog) | n/a |
-| T1 `node --test` | ✓ | ✗ hand-rolled `validate.mjs` | ✗ requires `tsx` |
-| T4 entrypoint harness test | ✗ | ✗ | ✓ reference implementation |
-| T9 typechecked | ✗ no `tsconfig.json` | ✗ no `tsconfig.json` | ✓ |
-| C2 pinned pi version | n/a | n/a | ✗ `0.80.10` vs runtime `0.84.1` |
-| C4 formatting | ✓ tabs | ✗ 2 spaces | ✓ tabs |
-| D1–D5 comments | ✓ | ✓ reference implementation | ✓ |
+| Rule area | `ask-user` | `permission-gate` | `context-footer` | `advisor` |
+|---|---|---|---|---|
+| L1 directory layout | ✓ | ✓ | ✓ | ✓ |
+| L5 tests under `test/` | ✓ | ✓ | ✓ | ✓ |
+| L6 extension README | ✓ | ✓ | ✓ | ✓ |
+| R1 TypeScript | ✓ | ✓ | ✓ | ✓ |
+| R2 erasable syntax | ✓ | ✓ | ✓ | ✓ |
+| R3 explicit `.ts` imports | ✓ | ✓ | ✓ | ✓ |
+| S1 pure core | ✓ `validation.ts`, `display.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` | ✓ |
+| S3 humble UI | ✓ display construction extracted | ✓ | ✓ fallback search extracted | n/a |
+| F3 parameter count | ✓ `WizardDeps` | ✓ | ✓ | deferred (§15) |
+| A1–A11 agent contract | ✓ reference implementation | n/a (no tool) | n/a | ✓ |
+| E1–E7 lifecycle | ✓ stateless per call | ✓ | ✓ generation guard | ✓ |
+| P1–P6 safety | n/a | ✓ reference implementation | n/a | n/a |
+| U5 key hints | ✓ derived from the keybindings manager | n/a (built-in dialog) | n/a | n/a |
+| T1 `node --test` | ✓ | ✓ | ✓ | ✓ |
+| T4 entrypoint harness test | ✓ | ✓ | ✓ reference implementation | ✓ |
+| T9 typechecked | ✓ | ✓ | ✓ | ✓ |
+| C2 pinned pi version | ✓ root `package.json` at `0.84.1` | ✓ | ✓ | ✓ |
+| C4 formatting | ✓ | ✓ | ✓ | deferred (§15) |
+| D1–D5 comments | ✓ | ✓ reference implementation | ✓ | ✓ |
 
-No extension is a bad citizen — each is the reference implementation for at least one rule area. The gaps are almost entirely *inconsistency between three good extensions*, not defects within any of them: three module layouts, two languages, three test conventions, two indentation styles, and two pinned pi versions. Most of this document therefore propagates what one extension already does best to the other two, rather than importing outside ideas.
+Whole-repo state: `npm run typecheck` clean, `node --test` **71 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json`, one pinned pi version, and a tracked pre-commit hook running all three.
+
+The two `advisor` rows marked *deferred* are deliberate, not outstanding: `advisor` is bound by the structural rules and meets all of them; its style pass waits until the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff. `advisor/` is excluded from the Biome formatter and linter until then.
+
+No extension was ever a bad citizen — each is the reference implementation for at least one rule area, and the gaps this table used to record were almost entirely *inconsistency between good extensions* rather than defects within any of them. Most of this document propagated what one extension already did best to the others rather than importing outside ideas.
+
+Two things the migration surfaced that no review had:
+
+- Typechecking `permission-gate/core.ts` for the first time revealed that `event.toolName !== "bash"` does **not** narrow pi's `ToolCallEvent` union, because `CustomToolCallEvent.toolName` is a plain `string`. An extension-registered tool named `bash` therefore reaches the gate with an arbitrary payload. This is the strongest evidence for `R1` in the document.
+- Asserting `A4` in a test revealed that three of `ask-user`'s twelve `promptGuidelines` bullets did not name their own tool, despite this table previously recording `A1`–`A11` as `✓`. A rule that nothing asserts drifts.
 
 ---
 
 ## 17. Verified toolchain facts
 
 Every rule resting on a claim about the toolchain was measured, not assumed. Recorded so no future agent has to re-derive them or is tempted to doubt a rule that looks like mere style. Measured on Node v24.16.0, pi 0.84.1.
+
+**These are measurements taken against the pre-§15 tree** — the paths and counts are as they were at the time, which is what makes them evidence. The violations they record have since been fixed; §16 describes the current state.
 
 | Claim | How it was checked | Result | Rule |
 |---|---|---|---|
@@ -468,8 +491,8 @@ Every rule resting on a claim about the toolchain was measured, not assumed. Rec
 
 Two rules exist *only* because of these measurements:
 
-- **R2** — `ask-user.ts` and `ask-user/multiline-select-list.ts` use constructor parameter properties. This is invisible in production because jiti transforms TypeScript, but it means those two files can never be loaded by `node --test`. That is very likely why `MultilineSelectList` has no tests while its pure sibling `option-layout.ts` has thorough ones. A testability constraint disguised as a style preference.
-- **R3** — `context-footer` needs the `tsx` dependency purely because `index.ts` imports `./format` extensionless. Five characters removes the dependency and turns the repo-root suite green. The tool choice was driven by an import-style accident.
+- **R2** — the `ask-user` entrypoint and `ask-user/multiline-select-list.ts` used constructor parameter properties. This was invisible in production because jiti transforms TypeScript, but it meant those two files could never be loaded by `node --test`. That is almost certainly why `MultilineSelectList` had no tests while its pure sibling `option-layout.ts` had thorough ones — and rewriting the two constructors was enough to add five, with no other change. A testability constraint disguised as a style preference.
+- **R3** — `context-footer` needed the `tsx` dependency purely because `index.ts` imported `./format` extensionless. Five characters removed the dependency and turned the repo-root suite green. The tool choice was driven by an import-style accident.
 
 ---
 

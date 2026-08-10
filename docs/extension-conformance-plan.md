@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- Plan Status: IN PROGRESS
+- Plan Status: COMPLETED
 - Created: 2026-08-10
 - Last Updated: 2026-08-10
 - Owner: Coding agent
@@ -367,13 +367,13 @@ None.
 
 ### Milestone 8: Cleanup And Final Verification
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Purpose: Ensure the repository contains only intentional final artifacts and the whole change is verified end to end.
 - Exit Criteria: Intermediate artifacts removed, full definition of done passes, standard §16 reflects reality, plan status `COMPLETED`.
 
 #### Task 8.1: Cleanup Intermediate Artifacts
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Remove artifacts created only to support the migration.
 - Steps:
   1. Inspect the worktree for leftovers: scratch `tsconfig.*.json` variants, one-off scripts, orphaned `node_modules` or lockfiles under extension directories, temporary test fixtures, and any `.mjs` file that was meant to be ported.
@@ -387,7 +387,7 @@ None.
 
 #### Task 8.2: Update the conformance table and finish
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: The standard's §16 table describes the repository as it now is, not as it was.
 - Steps:
   1. Rewrite standard §16 to reflect post-migration reality, changing the intro line away from "before the §15 migration".
@@ -395,10 +395,11 @@ None.
   3. Set this plan's status to `COMPLETED` and every task to its final status.
 - Validation: No `✗` remains in §16 for any rule this plan addressed; every `✓` is spot-checked against the actual files.
 - Notes: If Milestone 6 was skipped, leave those rows accurate rather than aspirational.
+- Result: Milestone 6 was **not** skipped, so no row is aspirational. §16 rewritten post-migration with `advisor` added as a fourth column and `L6`/`F3` rows added; no `✗` remains. §15 marked carried out, with the sequencing rationale kept because it is still the guidance for a future migration. Four further present-tense claims elsewhere in the standard had been invalidated by the migration and were corrected rather than left to mislead: `S3` and `F5` (their counter-examples are now the fixed code), `F3` (same), `U5` ("currently unmet" — now met, plus the two mechanics the implementation surfaced), `T2` (16/2 → 71/0), `C2` (`context-footer` no longer pins `0.80.10`), and `C4` (three Biome 2.5.7 realities the §11 snippet predates, including that `biome.json` cannot carry comments). §17 is left intact as a measurement record, with a note stating it was measured against the pre-migration tree.
 
 #### Task 8.3: Final Verification
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Validate the integrated change.
 - Steps:
   1. `npm run typecheck`
