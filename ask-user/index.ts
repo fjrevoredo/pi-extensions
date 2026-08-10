@@ -28,14 +28,13 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { type MultilineSelectItem, MultilineSelectList } from "./multiline-select-list.ts";
+import { buildDisplayOptions, type DisplayOption } from "./display.ts";
+import { MultilineSelectList } from "./multiline-select-list.ts";
 import {
-	type AskUserOption,
 	type AskUserQuestion,
 	defaultFreeTextPlaceholder,
 	type FreeTextMode,
 	normalizeQuestions,
-	SOMETHING_ELSE_VALUE,
 } from "./validation.ts";
 
 /**
@@ -71,16 +70,6 @@ interface FreeTextTarget {
 	optionLabel: string;
 	mode: FreeTextMode;
 	placeholder: string;
-}
-
-/** UI-only option representation used by MultilineSelectList. */
-interface DisplayOption {
-	item: MultilineSelectItem;
-	optionValue: string;
-	optionLabel: string;
-	responseType: AskUserOption["responseType"];
-	freeTextMode?: FreeTextMode;
-	freeTextPlaceholder?: string;
 }
 
 // Model-facing schema for explicit options. The branches are deliberately strict:
@@ -417,7 +406,7 @@ class AskUserWizard extends Container implements Focusable {
 	 * three lines before applying the final ellipsis fallback.
 	 */
 	private buildSelectState(question: AskUserQuestion): void {
-		const displayOptions = this.buildDisplayOptions(question);
+		const displayOptions = buildDisplayOptions(question);
 		const selectList = new MultilineSelectList(
 			displayOptions.map((option) => option.item),
 			createSelectListTheme(this.theme),
@@ -478,48 +467,6 @@ class AskUserWizard extends Container implements Focusable {
 				),
 			);
 		}
-	}
-
-	/**
-	 * Convert the normalized question into the exact option list shown in the UI.
-	 *
-	 * Explicit options always appear first. The built-in Something else fallback is appended last.
-	 */
-	private buildDisplayOptions(question: AskUserQuestion): DisplayOption[] {
-		const options: DisplayOption[] = question.options.map((option) => ({
-			item: {
-				value: option.value,
-				label: question.recommendedOptionValue === option.value ? `${option.label} (recommended)` : option.label,
-				description: option.description,
-			},
-			optionValue: option.value,
-			optionLabel: option.label,
-			responseType: option.responseType,
-			...(option.responseType === "freeText"
-				? {
-						freeTextMode: option.freeTextMode,
-						freeTextPlaceholder: option.freeTextPlaceholder,
-					}
-				: {}),
-		}));
-
-		options.push({
-			item: {
-				value: SOMETHING_ELSE_VALUE,
-				label: "Something else",
-				description:
-					question.somethingElseMode === "editor"
-						? `${question.somethingElsePlaceholder} (multi-line editor)`
-						: question.somethingElsePlaceholder,
-			},
-			optionValue: SOMETHING_ELSE_VALUE,
-			optionLabel: "Something else",
-			responseType: "freeText",
-			freeTextMode: question.somethingElseMode,
-			freeTextPlaceholder: question.somethingElsePlaceholder,
-		});
-
-		return options;
 	}
 
 	/** Build the runtime target used by the free-text capture states. */
