@@ -1,9 +1,9 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getSupportedThinkingLevels, type Api, type Model, type Usage } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { advisorCompletionOptions, isSupportedThinking } from "./advisor-options.ts";
-import { loadConfig, saveConfig, formatConfig } from "./config.ts";
+import { advisorConfigPath, loadConfig, saveConfig, formatConfig } from "./config.ts";
 import { formatAdvice, type AdvisorConfig, type AdvisorDetails, type AdvisorFailure } from "./contracts.ts";
 import { buildAdvisorContext } from "./context.ts";
 import { runAdvisorLoop } from "./advisor-loop.ts";
@@ -61,7 +61,10 @@ export default function advisor(pi: ExtensionAPI) {
 		description: "Configure, enable, disable, or inspect the read-only advisor.",
 		handler: async (rawArgs, ctx) => {
 			const args = rawArgs.trim().toLowerCase();
-			const loaded = await loadConfig();
+			// Resolved per invocation, not at factory scope: the factory also runs in
+			// invocations that never open a session (E1).
+			const configPath = advisorConfigPath(getAgentDir());
+			const loaded = await loadConfig(configPath);
 			if (loaded.error || !loaded.config) { ctx.ui.notify(loaded.error ?? "Advisor configuration is unavailable.", "error"); return; }
 			const config = loaded.config;
 			if (args === "on" || args === "off") {
@@ -91,7 +94,7 @@ export default function advisor(pi: ExtensionAPI) {
 			const okay = await ctx.ui.confirm("Advisor provider disclosure", `The advisor receives selected task context and permitted repository text through ${model.provider}. Path filtering and redaction reduce risk but are not a security sandbox. Continue?`);
 			if (!okay) return;
 			const next: AdvisorConfig = { ...config, enabled: true, model: selected, thinking: thinking as AdvisorConfig["thinking"] };
-			await saveConfig(next);
+			await saveConfig(next, configPath);
 			ctx.ui.notify(`Advisor saved: ${selected} (${thinking}).`, "info");
 		},
 	});
@@ -117,7 +120,8 @@ export default function advisor(pi: ExtensionAPI) {
 				return { content: [{ type: "text" as const, text: safe.text }], details: { ...safe.details, readOnlyToolCalls, usage }, usage };
 			};
 			if (parentSignal?.aborted) return failureResult("aborted");
-			const loaded = await loadConfig();
+			const agentDirectory = getAgentDir();
+			const loaded = await loadConfig(advisorConfigPath(agentDirectory));
 			if (loaded.error || !loaded.config) return failureResult("unconfigured");
 			const config = loaded.config;
 			if (!(state.enabled ?? config.enabled)) return failureResult("disabled");
@@ -130,7 +134,15 @@ export default function advisor(pi: ExtensionAPI) {
 			try {
 				const root = await resolveRoot(pi, ctx.cwd, parentSignal);
 				const evidence = await buildAdvisorContext(ctx, config.limits.maxContextBytes, () => gitSnapshot(pi, ctx.cwd, parentSignal), config.security.redactKnownSecrets);
-				const result = await runAdvisorLoop({ registry: ctx.modelRegistry, model, config, root, ...evidence, signal: parentSignal });
+				const result = await runAdvisorLoop({
+					registry: ctx.modelRegistry,
+					model,
+					config,
+					root,
+					agentDirectory,
+					...evidence,
+					signal: parentSignal,
+				});
 				if (!result.advice) return failureResult(result.failure ?? "invalid_response", result.readOnlyToolCalls, result.usage);
 				state.lastError = undefined;
 				const details: AdvisorDetails = { model: config.model, durationMs: Date.now() - started, readOnlyToolCalls: result.readOnlyToolCalls, usage: result.usage, advice: result.advice };

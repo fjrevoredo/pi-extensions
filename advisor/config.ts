@@ -1,10 +1,16 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { ADVISOR_VERSION, defaultConfig, DEFAULT_LIMITS, type AdvisorConfig, THINKING_LEVELS } from "./contracts.ts";
 
-export function getConfigPath(): string {
-	return join(getAgentDir(), "advisor.json");
+export const ADVISOR_CONFIG_FILENAME = "advisor.json";
+
+/**
+ * The advisor configuration lives beside pi's own agent state. The agent
+ * directory is passed in rather than read here, so this module never imports
+ * from `@earendil-works/*` (S2) and the tests never touch `~/.pi` (T7).
+ */
+export function advisorConfigPath(agentDirectory: string): string {
+	return join(agentDirectory, ADVISOR_CONFIG_FILENAME);
 }
 
 function isPositiveInteger(value: unknown, min: number, max: number): value is number {
@@ -39,7 +45,7 @@ export function validateConfig(value: unknown): AdvisorConfig | undefined {
 	};
 }
 
-export async function loadConfig(path = getConfigPath()): Promise<{ config?: AdvisorConfig; error?: string }> {
+export async function loadConfig(path: string): Promise<{ config?: AdvisorConfig; error?: string }> {
 	try {
 		const text = await readFile(path, "utf8");
 		const config = validateConfig(JSON.parse(text));
@@ -50,7 +56,7 @@ export async function loadConfig(path = getConfigPath()): Promise<{ config?: Adv
 	}
 }
 
-export async function saveConfig(config: AdvisorConfig, path = getConfigPath()): Promise<void> {
+export async function saveConfig(config: AdvisorConfig, path: string): Promise<void> {
 	if (!validateConfig(config)) throw new Error("Invalid advisor configuration.");
 	const directory = dirname(path);
 	const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;

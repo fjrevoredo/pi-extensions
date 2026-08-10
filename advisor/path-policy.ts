@@ -1,6 +1,5 @@
 import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_PROTECTED = [
 	".git", ".env", ".ssh", ".gnupg", ".aws", ".azure", ".kube", "auth.json", "credentials.json", ".npmrc",
@@ -40,11 +39,22 @@ export async function resolveAllowedPath(policy: PathPolicy, requested: string):
 	}
 }
 
-export function createPathPolicy(root: string, additionalProtectedPaths: string[], redactKnownSecrets = true): PathPolicy {
-	const agentDirectory = getAgentDir();
-	const additions = [...additionalProtectedPaths];
-	if (isWithin(root, agentDirectory)) additions.push(relative(root, agentDirectory));
-	return { root: resolve(root), additionalProtectedPaths: additions, redactKnownSecrets };
+export interface PathPolicyOptions {
+	root: string;
+	/** pi's agent directory, injected rather than read, so the policy is pure and testable (S2, S6). */
+	agentDirectory: string;
+	additionalProtectedPaths: string[];
+	redactKnownSecrets?: boolean;
+}
+
+export function createPathPolicy(options: PathPolicyOptions): PathPolicy {
+	const additions = [...options.additionalProtectedPaths];
+	if (isWithin(options.root, options.agentDirectory)) additions.push(relative(options.root, options.agentDirectory));
+	return {
+		root: resolve(options.root),
+		additionalProtectedPaths: additions,
+		redactKnownSecrets: options.redactKnownSecrets ?? true,
+	};
 }
 
 export function displayPath(root: string, path: string): string {

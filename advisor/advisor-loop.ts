@@ -25,8 +25,8 @@ function addUsage(total: Usage | undefined, usage: Usage | undefined): Usage | u
 	};
 }
 
-function toolResult(id: string, name: string, text: string) {
-	return { role: "toolResult" as const, toolCallId: id, toolName: name, content: [{ type: "text" as const, text }], isError: false, timestamp: Date.now() };
+function toolResult(id: string, name: string, text: string, now: () => number) {
+	return { role: "toolResult" as const, toolCallId: id, toolName: name, content: [{ type: "text" as const, text }], isError: false, timestamp: now() };
 }
 
 interface CompletionRegistry {
@@ -38,17 +38,27 @@ export async function runAdvisorLoop(input: {
 	model: Model<Api>;
 	config: AdvisorConfig;
 	root: string;
+	/** pi's agent directory, so the path policy can protect it without reading pi state itself (S2). */
+	agentDirectory: string;
 	systemPrompt: string;
 	evidence: string;
 	signal?: AbortSignal;
+	/** Injected clock (S6). Only ever stamps message timestamps. */
+	now?: () => number;
 }): Promise<{ advice?: Advice; usage?: Usage; readOnlyToolCalls: number; failure?: "aborted" | "timeout" | "invalid_response" | "provider_error" }> {
+	const now = input.now ?? Date.now;
 	const timeout = new AbortController();
 	const timer = setTimeout(() => timeout.abort(), input.config.limits.timeoutMs);
 	const signal = AbortSignal.any(input.signal ? [input.signal, timeout.signal] : [timeout.signal]);
 	const options = advisorCompletionOptions(input.model, input.config.thinking, input.config.limits.maxAdvisorOutputTokens, signal);
 	if (!options) return { readOnlyToolCalls: 0, failure: "invalid_response" };
-	const context: Context = { systemPrompt: input.systemPrompt, messages: [{ role: "user", content: input.evidence, timestamp: Date.now() }], tools: [...privateTools] };
-	const policy = createPathPolicy(input.root, input.config.security.additionalProtectedPaths, input.config.security.redactKnownSecrets);
+	const context: Context = { systemPrompt: input.systemPrompt, messages: [{ role: "user", content: input.evidence, timestamp: now() }], tools: [...privateTools] };
+	const policy = createPathPolicy({
+		root: input.root,
+		agentDirectory: input.agentDirectory,
+		additionalProtectedPaths: input.config.security.additionalProtectedPaths,
+		redactKnownSecrets: input.config.security.redactKnownSecrets,
+	});
 	let usage: Usage | undefined;
 	let readOnlyToolCalls = 0;
 	let submitted = false;
@@ -74,7 +84,7 @@ export async function runAdvisorLoop(input: {
 					if (!advice) {
 						invalidSubmissions += 1;
 						if (invalidSubmissions > 1) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-						context.messages.push(toolResult(call.id, call.name, "Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools."));
+						context.messages.push(toolResult(call.id, call.name, "Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.", now));
 						correctionOnly = true;
 						submitted = false;
 						continue;
@@ -83,12 +93,12 @@ export async function runAdvisorLoop(input: {
 				}
 				if (call.name !== "read" && call.name !== "grep" && call.name !== "find" && call.name !== "ls") return { usage, readOnlyToolCalls, failure: "invalid_response" };
 				if (readOnlyToolCalls >= input.config.limits.maxReadOnlyToolCalls) {
-					context.messages.push(toolResult(call.id, call.name, "Read-only tool budget is exhausted. Submit advice now without another repository tool call."));
+					context.messages.push(toolResult(call.id, call.name, "Read-only tool budget is exhausted. Submit advice now without another repository tool call.", now));
 					continue;
 				}
 				readOnlyToolCalls += 1;
 				const output = await executeRepositoryTool(policy, call.name, call.arguments, signal);
-				context.messages.push(toolResult(call.id, call.name, output));
+				context.messages.push(toolResult(call.id, call.name, output, now));
 			}
 		}
 		return { usage, readOnlyToolCalls, failure: "invalid_response" };

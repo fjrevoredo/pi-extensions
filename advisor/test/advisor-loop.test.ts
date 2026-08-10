@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { defaultConfig } from "../contracts.ts";
 import { runAdvisorLoop } from "../advisor-loop.ts";
+
+// Injected rather than read from pi (T7). The policy only does path arithmetic
+// with it, so this never has to exist on disk.
+const agentDirectory = join(tmpdir(), "advisor-tests-agent-dir");
 
 const model = {
 	provider: "test", id: "advisor", name: "advisor", api: "openai-completions", baseUrl: "http://test", reasoning: true,
@@ -19,7 +25,7 @@ test("runs only private read tools then returns validated advice", async () => {
 			: { ...base, content: [{ type: "toolCall" as const, id: "submit-1", name: "submit_advice", arguments: { advice: validAdvice } }] };
 	} };
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const };
-	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task" });
+	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task" });
 	assert.equal(result.advice?.outcome, "on_track");
 	assert.equal(result.readOnlyToolCalls, 1);
 	assert.equal(result.usage?.totalTokens, 4);
@@ -33,7 +39,7 @@ test("allows one corrected final submission without exposing invalid advice", as
 		return { ...base, content: [{ type: "toolCall" as const, id: `submit-${turn}`, name: "submit_advice", arguments: { advice: turn === 1 ? {} : validAdvice } }] };
 	} };
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const };
-	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task" });
+	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task" });
 	assert.equal(result.advice?.outcome, "on_track");
 	assert.equal(turn, 2);
 });
@@ -49,7 +55,7 @@ test("rejects every non-submission call during the correction turn", async () =>
 		return { ...base, content };
 	} };
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const };
-	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task" });
+	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task" });
 	assert.equal(result.failure, "invalid_response");
 	assert.equal(result.readOnlyToolCalls, 0);
 });
@@ -63,7 +69,7 @@ test("enforces the read cap while allowing a final submission", async () => {
 		return { ...base, content: [{ type: "toolCall" as const, id: "submit", name: "submit_advice", arguments: { advice: validAdvice } }] };
 	} };
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const, limits: { ...defaultConfig().limits, maxReadOnlyToolCalls: 1 } };
-	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task" });
+	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task" });
 	assert.equal(result.advice?.outcome, "on_track");
 	assert.equal(result.readOnlyToolCalls, 1);
 });
@@ -74,7 +80,7 @@ test("stops before a completion request when the parent aborts", async () => {
 	const controller = new AbortController();
 	controller.abort();
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const };
-	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task", signal: controller.signal });
+	const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task", signal: controller.signal });
 	assert.equal(result.failure, "aborted");
 	assert.equal(called, false);
 });
@@ -86,7 +92,7 @@ test("rejects unknown or mixed private tool calls", async () => {
 		[{ type: "toolCall" as const, id: "read", name: "read", arguments: { path: "README.md" } }, { type: "toolCall" as const, id: "submit", name: "submit_advice", arguments: { advice: validAdvice } }],
 	]) {
 		const registry = { async complete() { return { role: "assistant" as const, api: "openai-completions" as const, provider: "test", model: "advisor", stopReason: "toolUse" as const, timestamp: Date.now(), content, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }; } };
-		const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), systemPrompt: "policy", evidence: "task" });
+		const result = await runAdvisorLoop({ registry, model, config, root: process.cwd(), agentDirectory, systemPrompt: "policy", evidence: "task" });
 		assert.equal(result.failure, "invalid_response");
 	}
 });
