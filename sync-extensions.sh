@@ -29,6 +29,8 @@ sync_extensions() {
     --exclude
     '.githooks/'
     --exclude
+    '.github/'
+    --exclude
     'node_modules/'
     --exclude
     'package-lock.json'
@@ -39,7 +41,7 @@ sync_extensions() {
     --exclude
     'docs/'
     --exclude
-    '*/test/'
+    'test/'
     --exclude
     '*.test.ts'
     --exclude
