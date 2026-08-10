@@ -33,7 +33,15 @@ sync_extensions() {
     --exclude
     '.gitignore'
     --exclude
-    'README.md'
+    '*.md'
+    --exclude
+    'docs/'
+    --exclude
+    '*/test/'
+    --exclude
+    '*.test.ts'
+    --exclude
+    'tsconfig.json'
     --exclude
     'AGENTS.md'
     --exclude

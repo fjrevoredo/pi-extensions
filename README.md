@@ -13,6 +13,7 @@ Current extensions:
 - `permission-gate.ts` — top-level permission gate entrypoint
 - `permission-gate/` — supporting modules for the permission gate extension
 - `context-footer/` — two-row TUI footer with hard token-based context thresholds
+- `advisor/` — configured read-only technical advisor with the `consult_advisor({})` tool
 
 ## `ask_user` option contract
 
@@ -72,9 +73,10 @@ At minimum:
 
 1. `pi --list-models` — confirms extensions still load
 2. `node --experimental-strip-types --test ask-user/validation.test.ts` — runs the pure ask-user contract tests
-3. `bash sync-extensions.sh` — updates the runtime extension directory
-4. `/reload` inside pi — reloads the runtime
-5. Run a focused manual sanity check for the changed extension
+3. `npm --prefix advisor test && npm --prefix advisor run typecheck` — validates the advisor contract and private read-only boundary
+4. `bash sync-extensions.sh` — updates the runtime extension directory
+5. `/reload` inside pi — reloads the runtime
+6. Run a focused manual sanity check for the changed extension
 
 For TUI-heavy extensions like `ask-user.ts`, validate the real interaction flow in pi after reload, including explicit input/editor branches and the built-in fallback.
 
