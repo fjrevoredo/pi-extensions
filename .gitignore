@@ -5,8 +5,9 @@
 *.log
 
 # Node / package managers
+# package-lock.json is tracked: it is what pins the 252 resolved packages that
+# package.json's 7 direct pins leave floating (C2), and `npm ci` needs it.
 node_modules/
-package-lock.json
 pnpm-lock.yaml
 yarn.lock
 
