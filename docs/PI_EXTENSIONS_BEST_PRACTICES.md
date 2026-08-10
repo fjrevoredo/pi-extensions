@@ -463,6 +463,8 @@ Three properties of that check are deliberate:
 
 It is CI-only because it writes a real directory tree to a real temporary `HOME`; that is fine in a disposable runner and wrong in a ~3-second pre-commit hook.
 
+**One thing this section does not cover.** A SonarCloud GitHub App is already attached to this repository and posts a `SonarCloud Code Analysis` check on pushed commits. It is configured app-side — nothing in the tree references it — and it predates this workflow, so "enforcement is the local pre-commit hook" was never quite the whole picture. It is not part of the gate described here: the `checks` job is what this document defines, and no rule in it is asserted by SonarCloud.
+
 Branch protection on `master` requires the `checks` status. Required checks only bite on pull requests, so pushing straight to `master` makes CI a detector rather than a gate — a deliberate choice, and the CI-level analogue of the `--no-verify` escape hatch this section already accepts by name.
 
 ---
@@ -605,7 +607,7 @@ Rejected, with reasons:
 - **`npm audit`.** Every dependency is dev-only, nothing ships, and nothing processes untrusted input. A new advisory would redden CI with no code change, and a gate that fails without a change having been made is a broken gate that trains people to ignore it.
 - **A dependency-update bot.** See §19 — C2 pins to the installed runtime.
 - **`biome ci` instead of `biome check`.** It would differ from what the hook runs, reintroducing by hand the drift the call-site design removes.
-- **A status badge.** The repository is private; the badge endpoint is unauthenticated and would render broken for everyone.
+- **A status badge.** Not because it would not render — the repository is public, so it would. There is simply no audience: one maintainer, no external contributors, and `README.md` is read by agents working in the clone rather than by anyone deciding whether to trust the build. A badge is a signal to strangers.
 - **Anything that builds, versions, publishes, or deploys.** See §19.
 
 ---
