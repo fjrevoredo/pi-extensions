@@ -75,7 +75,7 @@ function isBlank(value: unknown): boolean {
 }
 
 function hasOwn(value: object, property: string): boolean {
-	return Object.prototype.hasOwnProperty.call(value, property);
+	return Object.hasOwn(value, property);
 }
 
 function describeValue(value: unknown): string {
@@ -118,7 +118,9 @@ function normalizeOption(questionId: string, inputOption: unknown): { option: As
 		return { error: `Error: Question ${questionId} contains an option with an empty label` };
 	}
 	if (isBlank(option.description)) {
-		return { error: `Error: Question ${questionId} option ${String(option.value)} is missing a non-empty description` };
+		return {
+			error: `Error: Question ${questionId} option ${String(option.value)} is missing a non-empty description`,
+		};
 	}
 
 	const value = option.value!.trim();
@@ -242,7 +244,9 @@ export function normalizeQuestions(params: AskUserParamsInput): { questions: Ask
 			const normalized = normalizeOption(questionId, inputOption);
 			if ("error" in normalized) return normalized;
 			if (seenOptionValues.has(normalized.option.value)) {
-				return { error: `Error: Question ${questionId} contains duplicate option value: ${normalized.option.value}` };
+				return {
+					error: `Error: Question ${questionId} contains duplicate option value: ${normalized.option.value}`,
+				};
 			}
 			seenOptionValues.add(normalized.option.value);
 			options.push(normalized.option);
@@ -273,7 +277,9 @@ export function normalizeQuestions(params: AskUserParamsInput): { questions: Ask
 
 		const somethingElseMode = inputQuestion.somethingElseMode ?? "input";
 		if (somethingElseMode !== "input" && somethingElseMode !== "editor") {
-			return { error: `Error: Question ${questionId} has invalid somethingElseMode: ${describeValue(somethingElseMode)}` };
+			return {
+				error: `Error: Question ${questionId} has invalid somethingElseMode: ${describeValue(somethingElseMode)}`,
+			};
 		}
 		const normalizedQuestion: AskUserQuestion = {
 			id: questionId,

@@ -33,7 +33,11 @@ test("renders known and unknown context meters", () => {
 		tone: "success",
 	});
 
-	for (const usage of [undefined, { tokens: null, contextWindow: 200_000, percent: null }, { tokens: 1, percent: 1 }]) {
+	for (const usage of [
+		undefined,
+		{ tokens: null, contextWindow: 200_000, percent: null },
+		{ tokens: 1, percent: 1 },
+	]) {
 		const meter = formatContextMeter(usage);
 		assert.equal(meter.tone, "unknown");
 		assert.equal(meter.empty, "??????????");

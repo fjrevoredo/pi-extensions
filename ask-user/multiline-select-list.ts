@@ -1,10 +1,11 @@
-import { type Component, type KeybindingsManager, type SelectListTheme } from "@earendil-works/pi-tui";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
-	getVisibleOptionWindow,
-	layoutOptions,
-	type OptionLayoutItem,
-} from "./option-layout.ts";
+	type Component,
+	type KeybindingsManager,
+	type SelectListTheme,
+	truncateToWidth,
+	visibleWidth,
+} from "@earendil-works/pi-tui";
+import { getVisibleOptionWindow, layoutOptions, type OptionLayoutItem } from "./option-layout.ts";
 
 export type MultilineSelectItem = OptionLayoutItem;
 

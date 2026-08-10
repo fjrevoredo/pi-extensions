@@ -10,18 +10,18 @@ const item = (label: string, description?: string): OptionLayoutItem => ({
 
 test("keeps the 32-cell baseline and grows up to two-fifths of the row", () => {
 	assert.equal(layoutOptions([item("A short option")], { availableWidth: 80 }).columnWidth, 32);
-	assert.equal(layoutOptions([item("A label that is deliberately longer than thirty two cells")], { availableWidth: 120 }).columnWidth, 48);
+	assert.equal(
+		layoutOptions([item("A label that is deliberately longer than thirty two cells")], { availableWidth: 120 })
+			.columnWidth,
+		48,
+	);
 	assert.equal(layoutOptions([item("x".repeat(100))], { availableWidth: 200 }).columnWidth, 80);
 });
 
 test("uses one shared width for all options and includes the recommendation suffix", () => {
-	const layout = layoutOptions(
-		[
-			item("Use version 0.0.2853 (recommended)"),
-			item("Use a shorter version"),
-		],
-		{ availableWidth: 120 },
-	);
+	const layout = layoutOptions([item("Use version 0.0.2853 (recommended)"), item("Use a shorter version")], {
+		availableWidth: 120,
+	});
 
 	assert.equal(layout.columnWidth, "Use version 0.0.2853 (recommended)".length);
 	assert.equal(layout.rows[0]?.lines.join(" "), "Use version 0.0.2853 (recommended)");
@@ -31,7 +31,9 @@ test("uses one shared width for all options and includes the recommendation suff
 test("wraps labels to three lines and adds an ellipsis only when content remains", () => {
 	const layout = layoutOptions(
 		[
-			item("one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty"),
+			item(
+				"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty",
+			),
 		],
 		{ availableWidth: 80 },
 	);
@@ -45,7 +47,9 @@ test("wraps labels to three lines and adds an ellipsis only when content remains
 test("keeps long recommended labels visibly truncated instead of hard-clipped", () => {
 	const layout = layoutOptions(
 		[
-			item("Use the extremely long staged rollout strategy with regional checkpoints, automated rollback guards, dependency validation, and post-deployment verification (recommended)"),
+			item(
+				"Use the extremely long staged rollout strategy with regional checkpoints, automated rollback guards, dependency validation, and post-deployment verification (recommended)",
+			),
 		],
 		{ availableWidth: 80 },
 	);
@@ -55,13 +59,9 @@ test("keeps long recommended labels visibly truncated instead of hard-clipped", 
 });
 
 test("keeps labels with long unbroken tokens and Unicode within width", () => {
-	const layout = layoutOptions(
-		[
-			item("supercalifragilisticexpialidocious"),
-			item("Deploy 日本語 🚀 safely"),
-		],
-		{ availableWidth: 100 },
-	);
+	const layout = layoutOptions([item("supercalifragilisticexpialidocious"), item("Deploy 日本語 🚀 safely")], {
+		availableWidth: 100,
+	});
 
 	for (const row of layout.rows) {
 		assert.ok(row.lines.length <= 3);
@@ -79,12 +79,7 @@ test("keeps descriptions on the first line only when useful space remains", () =
 
 test("uses complete logical options in the eight-row visible window", () => {
 	const layout = layoutOptions(
-		[
-			item("one two three four five six seven eight nine ten"),
-			item("short"),
-			item("another short"),
-			item("last"),
-		],
+		[item("one two three four five six seven eight nine ten"), item("short"), item("another short"), item("last")],
 		{ availableWidth: 50, maxVisibleRows: 3 },
 	);
 

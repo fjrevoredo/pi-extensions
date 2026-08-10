@@ -144,7 +144,7 @@ None.
 
 ### Milestone 3: Layout And Language
 
-- Status: IN PROGRESS
+- Status: COMPLETED
 - Purpose: Give every extension the official directory shape and a single language, which is the only work that changes the runtime directory.
 - Exit Criteria: `~/.pi/agent/extensions/` contains only `ask-user/`, `permission-gate/`, `context-footer/`, `advisor/` (each with `index.ts`) and no stray top-level `.ts` entrypoints, test files, or configs; both restructured extensions have been exercised in a reloaded pi.
 
@@ -192,13 +192,13 @@ None.
 
 ### Milestone 4: Formatting And Enforcement
 
-- Status: TO BE DONE
+- Status: IN PROGRESS
 - Purpose: Settle formatting once, after all files have stopped moving, and make the whole standard self-enforcing from then on.
 - Exit Criteria: `npm run lint` passes; a deliberately malformed commit is rejected by the hook; no file needs reformatting a second time.
 
 #### Task 4.1: Add the Biome config and reformat once (C4)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: One indentation style and line width across the repository, matching upstream pi-mono.
 - Steps:
   1. Add `@biomejs/biome` to root `devDependencies` at an exact version and `npm install`.
@@ -209,6 +209,13 @@ None.
   6. Run `npm run lint` and fix genuine findings. If a `recommended` rule flags something whose fix would change behaviour, disable that specific rule in `biome.json` with a one-line comment explaining why, rather than changing behaviour (see this plan's Non-Goals).
 - Validation: `npm run lint` exits 0; `npm run typecheck` clean; `node --test` root passes with the same test count as before the reformat; `git diff` contains no changes under `advisor/`; `bash sync-extensions.sh --dry-run` lists no `biome.json`.
 - Notes: Must come after Milestone 3 so no file is reformatted twice. The only pre-existing indentation outlier is `permission-gate`'s two-space `.mjs`, already rewritten as `.ts` by Task 3.3 — write it with tabs there so this task is a no-op for those files.
+- Result: Biome 2.5.7, so `files.includes` with `!`-prefixed negations. `npm run lint` exits 0 with zero diagnostics over 21 files, `advisor/` is excluded from both formatter and linter and has no diff, and the test count is unchanged at 48. Four deviations from the literal step list, all forced by the installed Biome:
+  - `linter.rules.recommended: true` (standard §11 `C4`) is **deprecated** in Biome 2.5.7 and emits a warning. Written as `"preset": "recommended"`, which is the same rule set under the current key. The standard's §11 snippet should be updated when it is next revised.
+  - `noExplicitAny` is turned off for `**/test/**` and `**/*.test.ts` via an `overrides` block rather than per-site ignores. This encodes `R6`, which already permits `any` freely in test fakes.
+  - `noNonNullAssertion` is off repo-wide. Biome's only offered fix is `?.`, which it marks *unsafe* precisely because it short-circuits where the assertion would throw — applying it at 20 sites would be a behaviour change, which this plan's Non-Goals forbid.
+  - `biome.json` cannot carry comments (Biome accepts them only in `biome.jsonc`); adding them silently invalidates the config, which then falls back to defaults and starts checking `advisor/`. The rationale for both rule adjustments therefore lives here and in `AGENTS.md` rather than inline.
+  - One genuine `noMisleadingCharacterClass` error in `ask-user/option-layout.ts` is suppressed with a single-line `biome-ignore` at the call site: the loop iterates by code point, so the class only ever matches a lone zero-width code point, which is the intent. A multi-line `biome-ignore` does not work — the directive must be the last comment line before the offending line.
+  - Genuine findings fixed rather than suppressed: an unused `AskUserParams` type alias and its now-unused `Static` import in `ask-user/index.ts`, an unused `TUI` import in `context-footer/index.ts`, and a useless `String.raw` in `permission-gate/core.ts`.
 
 #### Task 4.2: Add the tracked pre-commit hook (§14)
 

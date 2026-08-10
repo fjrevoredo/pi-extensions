@@ -9,9 +9,10 @@
  * - allow explicit free-text branches with custom labels inside options[]
  * - keep the model-facing contract clean and predictable
  */
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+
 import { StringEnum } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	Editor,
@@ -25,16 +26,16 @@ import {
 	Text,
 	type TUI,
 } from "@earendil-works/pi-tui";
-import { Type, type Static } from "typebox";
+import { Type } from "typebox";
+import { type MultilineSelectItem, MultilineSelectList } from "./multiline-select-list.ts";
 import {
-	defaultFreeTextPlaceholder,
-	normalizeQuestions,
-	SOMETHING_ELSE_VALUE,
 	type AskUserOption,
 	type AskUserQuestion,
+	defaultFreeTextPlaceholder,
 	type FreeTextMode,
+	normalizeQuestions,
+	SOMETHING_ELSE_VALUE,
 } from "./validation.ts";
-import { MultilineSelectList, type MultilineSelectItem } from "./multiline-select-list.ts";
 
 /**
  * Structured answer returned by the tool.
@@ -124,7 +125,9 @@ const AskUserOptionSchema = Type.Union([AskUserSelectOptionSchema, AskUserFreeTe
 // Model-facing schema for each question. Defaults are resolved in normalizeQuestions().
 const AskUserQuestionSchema = Type.Object({
 	id: Type.String({ description: "Stable identifier for this question" }),
-	label: Type.Optional(Type.String({ description: "Short label used in summaries and the review screen; defaults to id" })),
+	label: Type.Optional(
+		Type.String({ description: "Short label used in summaries and the review screen; defaults to id" }),
+	),
 	prompt: Type.String({ description: "Full question shown to the user" }),
 	options: Type.Array(AskUserOptionSchema, {
 		description:
@@ -163,8 +166,6 @@ const AskUserParamsSchema = Type.Object({
 	}),
 });
 
-type AskUserParams = Static<typeof AskUserParamsSchema>;
-
 /** Build the structured details object persisted on the tool result message. */
 function createDetails(
 	questions: AskUserQuestion[],
@@ -194,7 +195,10 @@ function createToolResult(text: string, details: AskUserDetails) {
 }
 
 /** Return a normal tool result for validation/runtime errors instead of throwing. */
-function createErrorResult(message: string, params?: { title?: string; intro?: string; questions?: AskUserQuestion[] }) {
+function createErrorResult(
+	message: string,
+	params?: { title?: string; intro?: string; questions?: AskUserQuestion[] },
+) {
 	return createToolResult(
 		message,
 		createDetails(params?.questions ?? [], [], {
@@ -422,7 +426,9 @@ class AskUserWizard extends Container implements Focusable {
 			const selectedIndex = displayOptions.findIndex((option) => option.optionValue === currentAnswer.optionValue);
 			selectList.setSelectedIndex(selectedIndex >= 0 ? selectedIndex : 0);
 		} else if (question.recommendedOptionValue) {
-			const recommendedIndex = displayOptions.findIndex((option) => option.optionValue === question.recommendedOptionValue);
+			const recommendedIndex = displayOptions.findIndex(
+				(option) => option.optionValue === question.recommendedOptionValue,
+			);
 			selectList.setSelectedIndex(recommendedIndex >= 0 ? recommendedIndex : 0);
 		}
 
@@ -490,7 +496,7 @@ class AskUserWizard extends Container implements Focusable {
 				? {
 						freeTextMode: option.freeTextMode,
 						freeTextPlaceholder: option.freeTextPlaceholder,
-				  }
+					}
 				: {}),
 		}));
 
@@ -612,9 +618,7 @@ class AskUserWizard extends Container implements Focusable {
 			const answerText = answer.wasFreeText
 				? `${this.theme.fg("muted", `${answer.optionLabel}: `)}${this.theme.fg("text", answer.text ?? answer.value)}`
 				: this.theme.fg("text", answer.optionLabel);
-			this.addChild(
-				new Text(`${this.theme.fg("muted", `${question.label}: `)}${answerText}${suffix}`, 1, 0),
-			);
+			this.addChild(new Text(`${this.theme.fg("muted", `${question.label}: `)}${answerText}${suffix}`, 1, 0));
 		}
 	}
 
@@ -862,7 +866,8 @@ export default function askUser(pi: ExtensionAPI) {
 						typeof (question as { label?: unknown }).label === "string"
 							? (question as { label: string }).label
 							: undefined;
-					const id = typeof (question as { id?: unknown }).id === "string" ? (question as { id: string }).id : undefined;
+					const id =
+						typeof (question as { id?: unknown }).id === "string" ? (question as { id: string }).id : undefined;
 					return label || id || "?";
 				})
 				.join(", ");

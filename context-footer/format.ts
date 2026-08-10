@@ -86,7 +86,8 @@ export function formatContextMeter(usage: ContextUsage | undefined, cells = CONT
 		filled: "█".repeat(filledCount),
 		empty: "░".repeat(cells - filledCount),
 		percentText: `${Math.round(percent)}%`,
-		tokensText: typeof tokens === "number" ? `${formatTokenCount(tokens)}/${formatTokenCount(contextWindow)}` : undefined,
+		tokensText:
+			typeof tokens === "number" ? `${formatTokenCount(tokens)}/${formatTokenCount(contextWindow)}` : undefined,
 		tone,
 	};
 }

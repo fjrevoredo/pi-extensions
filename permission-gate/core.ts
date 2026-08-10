@@ -50,7 +50,7 @@ const SENSITIVE_REDIRECT_PREFIX_PATTERN = String.raw`(?:\/etc\/|\/usr\/|\/bin\/|
 // contexts. This avoids flagging example text such as `echo "DELETE FROM users"`.
 // The first-pass allowlist is intentionally small and should only be expanded with
 // matching validation coverage.
-const DB_CLIENT_PATTERN = String.raw`(?:psql|mysql|sqlite3)`;
+const DB_CLIENT_PATTERN = "(?:psql|mysql|sqlite3)";
 const DB_COMMAND_PREFIX_PATTERN = String.raw`^(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(?:sudo\s+)?${DB_CLIENT_PATTERN}\b[\s\S]*`;
 
 function createDbCommandPattern(sqlPattern: string): RegExp {
@@ -102,14 +102,54 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 	{ id: "process-pkill", label: "Pattern kill", category: "process", pattern: /\bpkill\b/i },
 
 	// Package management - uninstall / remove
-	{ id: "package-npm-remove", label: "npm uninstall", category: "package-manager", pattern: /\bnpm\s+(uninstall|remove|r\b)/i },
-	{ id: "package-yarn-remove", label: "yarn remove", category: "package-manager", pattern: /\byarn\s+(remove|unlink)\b/i },
-	{ id: "package-pip-uninstall", label: "pip uninstall", category: "package-manager", pattern: /\bpip\s+uninstall\b/i },
-	{ id: "package-pip3-uninstall", label: "pip3 uninstall", category: "package-manager", pattern: /\bpip3\s+uninstall\b/i },
-	{ id: "package-pnpm-remove", label: "pnpm remove", category: "package-manager", pattern: /\bpnpm\s+(remove|uninstall)\b/i },
-	{ id: "package-poetry-remove", label: "poetry remove", category: "package-manager", pattern: /\bpoetry\s+remove\b/i },
-	{ id: "package-maven-release", label: "Maven release", category: "package-manager", pattern: /\b(?:maven|mvn)\b.*-Prelease\b/i },
-	{ id: "package-brew-remove", label: "brew uninstall", category: "package-manager", pattern: /\bbrew\s+(uninstall|remove)\b/i },
+	{
+		id: "package-npm-remove",
+		label: "npm uninstall",
+		category: "package-manager",
+		pattern: /\bnpm\s+(uninstall|remove|r\b)/i,
+	},
+	{
+		id: "package-yarn-remove",
+		label: "yarn remove",
+		category: "package-manager",
+		pattern: /\byarn\s+(remove|unlink)\b/i,
+	},
+	{
+		id: "package-pip-uninstall",
+		label: "pip uninstall",
+		category: "package-manager",
+		pattern: /\bpip\s+uninstall\b/i,
+	},
+	{
+		id: "package-pip3-uninstall",
+		label: "pip3 uninstall",
+		category: "package-manager",
+		pattern: /\bpip3\s+uninstall\b/i,
+	},
+	{
+		id: "package-pnpm-remove",
+		label: "pnpm remove",
+		category: "package-manager",
+		pattern: /\bpnpm\s+(remove|uninstall)\b/i,
+	},
+	{
+		id: "package-poetry-remove",
+		label: "poetry remove",
+		category: "package-manager",
+		pattern: /\bpoetry\s+remove\b/i,
+	},
+	{
+		id: "package-maven-release",
+		label: "Maven release",
+		category: "package-manager",
+		pattern: /\b(?:maven|mvn)\b.*-Prelease\b/i,
+	},
+	{
+		id: "package-brew-remove",
+		label: "brew uninstall",
+		category: "package-manager",
+		pattern: /\bbrew\s+(uninstall|remove)\b/i,
+	},
 	{
 		id: "package-apt-remove",
 		label: "apt remove/purge",
@@ -130,7 +170,12 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		category: "container",
 		pattern: /\bdocker(?:-compose|\s+compose)\s+down\b.*(?:\s-v\b|--volumes\b)/i,
 	},
-	{ id: "container-docker-image-prune", label: "Docker image prune", category: "container", pattern: /\bdocker\s+image\s+prune\b/i },
+	{
+		id: "container-docker-image-prune",
+		label: "Docker image prune",
+		category: "container",
+		pattern: /\bdocker\s+image\s+prune\b/i,
+	},
 	{
 		id: "container-docker-builder-prune",
 		label: "Docker builder prune",
@@ -151,10 +196,20 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		category: "database",
 		pattern: createDbCommandPattern(String.raw`\bTRUNCATE\s+TABLE\b`),
 	},
-	{ id: "database-delete", label: "SQL DELETE", category: "database", pattern: createDbCommandPattern(String.raw`\bDELETE\s+FROM\b`) },
+	{
+		id: "database-delete",
+		label: "SQL DELETE",
+		category: "database",
+		pattern: createDbCommandPattern(String.raw`\bDELETE\s+FROM\b`),
+	},
 
 	// Git destructive
-	{ id: "git-force-push", label: "Force git push", category: "git", pattern: /\bgit\s+push\b.*(?:--force(?:-with-lease)?|-f\b)/i },
+	{
+		id: "git-force-push",
+		label: "Force git push",
+		category: "git",
+		pattern: /\bgit\s+push\b.*(?:--force(?:-with-lease)?|-f\b)/i,
+	},
 	{ id: "git-reset-hard", label: "git reset --hard", category: "git", pattern: /\bgit\s+reset\s+--hard\b/i },
 	{ id: "git-clean-force", label: "git clean -f", category: "git", pattern: /\bgit\s+clean\s+(-[a-z]*f[a-z]*)\b/i },
 
@@ -165,15 +220,40 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 	{ id: "privilege-su", label: "su (switch user)", category: "privilege", pattern: /\bsu(?:\s|$)/i },
 
 	// System
-	{ id: "system-shutdown", label: "System shutdown/reboot", category: "system", pattern: /\b(shutdown|reboot|halt|poweroff)\b/i },
+	{
+		id: "system-shutdown",
+		label: "System shutdown/reboot",
+		category: "system",
+		pattern: /\b(shutdown|reboot|halt|poweroff)\b/i,
+	},
 	// Policy choice: gate exact octal 777 here, but do not gate sticky-bit 1777 in this pass.
 	// If that policy changes later, update both this rule and the validation cases together.
-	{ id: "system-chmod-777", label: "chmod 777 (world-writable)", category: "system", pattern: /\bchmod\b(?:\s+--?[a-z-]+)*\s+777\b/i },
+	{
+		id: "system-chmod-777",
+		label: "chmod 777 (world-writable)",
+		category: "system",
+		pattern: /\bchmod\b(?:\s+--?[a-z-]+)*\s+777\b/i,
+	},
 
 	// Infrastructure / orchestration
-	{ id: "infra-kubectl-delete", label: "kubectl delete", category: "infrastructure", pattern: /\bkubectl\s+delete\b/i },
-	{ id: "infra-terraform-destroy", label: "terraform destroy", category: "infrastructure", pattern: /\bterraform\s+destroy\b/i },
-	{ id: "infra-helm-uninstall", label: "helm uninstall", category: "infrastructure", pattern: /\bhelm\s+uninstall\b/i },
+	{
+		id: "infra-kubectl-delete",
+		label: "kubectl delete",
+		category: "infrastructure",
+		pattern: /\bkubectl\s+delete\b/i,
+	},
+	{
+		id: "infra-terraform-destroy",
+		label: "terraform destroy",
+		category: "infrastructure",
+		pattern: /\bterraform\s+destroy\b/i,
+	},
+	{
+		id: "infra-helm-uninstall",
+		label: "helm uninstall",
+		category: "infrastructure",
+		pattern: /\bhelm\s+uninstall\b/i,
+	},
 ];
 
 // `unknown` is deliberate and is the honest type at this boundary. pi's ToolCallEvent

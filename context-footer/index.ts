@@ -1,19 +1,19 @@
 import type { ContextUsage, ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 import {
+	type ContextTone,
 	combineFooterSegments,
+	fitsWidth,
 	formatContextMeter,
 	formatCost,
 	formatCwd,
 	formatGitSummary,
+	type GitSummary,
 	getContextTone,
 	getCumulativeCost,
 	joinFooterSegments,
 	parseGitStatus,
 	truncateSegment,
-	fitsWidth,
-	type ContextTone,
-	type GitSummary,
 } from "./format.ts";
 
 type AgentPhase = "ready" | "thinking" | "running";
@@ -54,7 +54,11 @@ export default function contextFooterExtension(pi: ExtensionAPI): void {
 		return theme.fg("accent", `◐ ${label}`);
 	}
 
-	function buildContextSegment(theme: Theme, usage: ContextUsage | undefined, mode: "full" | "meter" | "percent"): string {
+	function buildContextSegment(
+		theme: Theme,
+		usage: ContextUsage | undefined,
+		mode: "full" | "meter" | "percent",
+	): string {
 		const meter = formatContextMeter(usage);
 		const tone = themeTone(theme, meter.tone, meter.percentText);
 		if (mode === "percent") return `${theme.fg("muted", "CTX ")}${tone}`;
@@ -126,9 +130,7 @@ export default function contextFooterExtension(pi: ExtensionAPI): void {
 					const branch = footerData.getGitBranch();
 					const branchText = branch ? theme.fg("muted", branch) : undefined;
 					const gitText = formatGitSummary(gitSummary);
-					const gitSegment = gitText
-						? theme.fg(gitSummary?.conflicted ? "error" : "warning", gitText)
-						: undefined;
+					const gitSegment = gitText ? theme.fg(gitSummary?.conflicted ? "error" : "warning", gitText) : undefined;
 					const sessionName = ctx.sessionManager.getSessionName();
 					const sessionSegment = sessionName ? theme.fg("dim", `session: ${sessionName}`) : undefined;
 
@@ -154,11 +156,7 @@ export default function contextFooterExtension(pi: ExtensionAPI): void {
 					const model = ctx.model;
 					const thinking = pi.getThinkingLevel();
 					const modelOptions = model
-						? [
-							theme.fg("muted", `${model.id} · ${thinking}`),
-							theme.fg("muted", model.id),
-							undefined,
-						]
+						? [theme.fg("muted", `${model.id} · ${thinking}`), theme.fg("muted", model.id), undefined]
 						: [undefined];
 					const cost = theme.fg("muted", formatCost(getCumulativeCost(ctx.sessionManager.getEntries())));
 

@@ -47,6 +47,8 @@ sync_extensions() {
     --exclude
     '*.tsbuildinfo'
     --exclude
+    'biome.json'
+    --exclude
     'AGENTS.md'
     --exclude
     'sync-extensions.sh'

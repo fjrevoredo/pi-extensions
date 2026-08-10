@@ -59,6 +59,10 @@ const defaultMetrics: TextMetrics = {
 		let width = 0;
 		for (const character of [...text]) {
 			const codePoint = character.codePointAt(0) ?? 0;
+			// The rule guards against a character class splitting a grapheme. This loop already
+			// iterates by code point, so `character` is a lone combining mark, ZWSP, or variation
+			// selector \u2014 exactly the zero-width code points this class must skip to measure width.
+			// biome-ignore lint/suspicious/noMisleadingCharacterClass: matching lone zero-width code points is the intent here
 			if (codePoint === 0 || codePoint < 32 || /[\u0300-\u036f\u200b\ufe00-\ufe0f]/u.test(character)) continue;
 			width += codePoint >= 0x1100 ? 2 : 1;
 		}
@@ -158,7 +162,10 @@ function fitLabelLines(text: string, width: number, maxLines: number, metrics: T
 	return lines;
 }
 
-function calculateColumnWidth(items: OptionLayoutItem[], config: Required<Pick<OptionLayoutConfig, "availableWidth">> & OptionLayoutConfig): number {
+function calculateColumnWidth(
+	items: OptionLayoutItem[],
+	config: Required<Pick<OptionLayoutConfig, "availableWidth">> & OptionLayoutConfig,
+): number {
 	const metrics = getMetrics(config);
 	const minColumnWidth = config.minColumnWidth ?? DEFAULT_MIN_COLUMN_WIDTH;
 	const maxColumnFraction = config.maxColumnFraction ?? DEFAULT_MAX_COLUMN_FRACTION;
@@ -177,13 +184,17 @@ export function layoutOptions(items: OptionLayoutItem[], config: OptionLayoutCon
 	const minDescriptionWidth = config.minDescriptionWidth ?? DEFAULT_MIN_DESCRIPTION_WIDTH;
 	const maxLines = config.maxLines ?? DEFAULT_MAX_LINES;
 	const columnWidth = calculateColumnWidth(items, config);
-	const descriptionAvailableWidth = Math.max(0, config.availableWidth - (config.prefixWidth ?? DEFAULT_PREFIX_WIDTH) - columnWidth - descriptionGap);
+	const descriptionAvailableWidth = Math.max(
+		0,
+		config.availableWidth - (config.prefixWidth ?? DEFAULT_PREFIX_WIDTH) - columnWidth - descriptionGap,
+	);
 
 	const rows = items.map((item) => {
 		const lines = fitLabelLines(item.label, columnWidth, maxLines, metrics);
-		const description = item.description && descriptionAvailableWidth > minDescriptionWidth
-			? metrics.truncate(normalizeText(item.description), descriptionAvailableWidth, "")
-			: undefined;
+		const description =
+			item.description && descriptionAvailableWidth > minDescriptionWidth
+				? metrics.truncate(normalizeText(item.description), descriptionAvailableWidth, "")
+				: undefined;
 		return { item, lines, description, visualHeight: lines.length };
 	});
 
@@ -204,7 +215,9 @@ export function getVisibleOptionWindow(layout: OptionLayout, selectedIndex: numb
 	let startIndex = 0;
 
 	while (startIndex < selected) {
-		const selectedHeight = layout.rows.slice(startIndex, selected + 1).reduce((sum, row) => sum + row.visualHeight, 0);
+		const selectedHeight = layout.rows
+			.slice(startIndex, selected + 1)
+			.reduce((sum, row) => sum + row.visualHeight, 0);
 		if (selectedHeight <= maxRows) break;
 		startIndex++;
 	}

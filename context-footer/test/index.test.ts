@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import contextFooterExtension from "../index.ts";
 
 type Handler = (event: any, ctx?: any) => unknown;
@@ -36,9 +36,7 @@ function createHarness() {
 		getContextUsage: () => usage,
 		sessionManager: {
 			getSessionName: () => "idempotency fix",
-			getEntries: () => [
-				{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.123 } } } },
-			],
+			getEntries: () => [{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.123 } } } }],
 		},
 		ui: {
 			setFooter(factory: unknown) {
@@ -64,11 +62,7 @@ function createHarness() {
 		async start() {
 			await handlers.get("session_start")![0]!({}, ctx);
 			await new Promise((resolve) => setImmediate(resolve));
-			const component = footerFactory(
-				{ requestRender: () => renderRequests++ },
-				theme,
-				footerData,
-			);
+			const component = footerFactory({ requestRender: () => renderRequests++ }, theme, footerData);
 			return component;
 		},
 		emit(event: string, payload: unknown = {}) {

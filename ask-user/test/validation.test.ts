@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	normalizeQuestions,
-	SOMETHING_ELSE_VALUE,
-	type AskUserParamsInput,
-} from "../validation.ts";
+import { type AskUserParamsInput, normalizeQuestions, SOMETHING_ELSE_VALUE } from "../validation.ts";
 
 const selectOption = {
 	value: "fixed",
@@ -98,7 +94,10 @@ test("requires all free-text fields and rejects blank placeholders", () => {
 	delete missingPlaceholder.freeTextPlaceholder;
 	assert.match(errorFor(missingPlaceholder), /freeTextPlaceholder must be a non-empty string/);
 
-	assert.match(errorFor({ ...freeTextOption, freeTextPlaceholder: "   " }), /freeTextPlaceholder must be a non-empty string/);
+	assert.match(
+		errorFor({ ...freeTextOption, freeTextPlaceholder: "   " }),
+		/freeTextPlaceholder must be a non-empty string/,
+	);
 	assert.match(errorFor({ ...freeTextOption, freeTextMode: "textarea" }), /freeTextMode must be "input" or "editor"/);
 });
 
@@ -135,7 +134,10 @@ test("preserves recommendation validation and cannot target the fallback", () =>
 	assert(!("error" in accepted));
 	assert.equal(accepted.questions[0]?.recommendedOptionLabel, "Fixed choice");
 
-	assert.match(errorFor(selectOption, { recommendedOptionValue: "fixed" }), /both recommendedOptionValue and recommendationRationale/);
+	assert.match(
+		errorFor(selectOption, { recommendedOptionValue: "fixed" }),
+		/both recommendedOptionValue and recommendationRationale/,
+	);
 	assert.match(
 		errorFor(selectOption, { recommendedOptionValue: "unknown", recommendationRationale: "Not listed." }),
 		/recommends unknown explicit option value: unknown/,

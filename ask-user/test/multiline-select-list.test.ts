@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { KeybindingsManager, SelectListTheme } from "@earendil-works/pi-tui";
-import { MultilineSelectList, type MultilineSelectItem } from "../multiline-select-list.ts";
+import { type MultilineSelectItem, MultilineSelectList } from "../multiline-select-list.ts";
 
 // Fixed sentinels rather than real key sequences: this file asserts on dispatch,
 // not on the keybinding table.
@@ -23,7 +23,6 @@ const BINDINGS: Record<string, string> = {
 	[CANCEL]: "tui.select.cancel",
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: test fake for a pi boundary type (R6).
 const keybindings = { matches: (data: string, id: string) => BINDINGS[data] === id } as any as KeybindingsManager;
 
 // Identity theme so assertions read against raw text rather than escape codes.
@@ -32,7 +31,6 @@ const theme = {
 	selectedText: (text: string) => text,
 	description: (text: string) => text,
 	scrollInfo: (text: string) => text,
-	// biome-ignore lint/suspicious/noExplicitAny: test fake for a pi boundary type (R6).
 } as any as SelectListTheme;
 
 const item = (value: string): MultilineSelectItem => ({ value, label: `Option ${value}`, description: undefined });
@@ -112,9 +110,6 @@ test("marks only the selected row with the arrow prefix", () => {
 		"exactly one row carries the selection prefix",
 	);
 	assert.equal(lines[1], "→ Option b");
-	assert.ok(
-		lines[0]?.startsWith("  ") && !lines[0].startsWith("→ "),
-		"unselected rows keep the two-space prefix",
-	);
+	assert.ok(lines[0]?.startsWith("  ") && !lines[0].startsWith("→ "), "unselected rows keep the two-space prefix");
 	assert.ok(lines[2]?.startsWith("  ") && !lines[2].startsWith("→ "));
 });
