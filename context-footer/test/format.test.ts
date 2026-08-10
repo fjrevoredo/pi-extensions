@@ -3,6 +3,7 @@ import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import {
 	combineFooterSegments,
+	findFittingCombination,
 	formatContextMeter,
 	formatGitSummary,
 	getContextTone,
@@ -78,4 +79,33 @@ test("never renders a line wider than its requested width", () => {
 		const line = joinFooterSegments(width, [truncateSegment(source, width), "session: a very long session name"]);
 		assert.ok(visibleWidth(line) <= width, `${visibleWidth(line)} exceeds ${width}`);
 	}
+});
+
+test("returns the widest combination that fits", () => {
+	// Options within a slot are ordered widest-first, as the footer builds them.
+	const slots = [["status"], ["context-full", "ctx"], ["model", undefined]];
+
+	// Widths of the four combinations, in search order: 29, 21, 20, 12.
+	assert.equal(findFittingCombination(slots, 80), "status │ context-full │ model");
+	assert.equal(findFittingCombination(slots, 28), "status │ context-full");
+	assert.equal(findFittingCombination(slots, 20), "status │ ctx │ model");
+	assert.equal(findFittingCombination(slots, 19), "status │ ctx");
+});
+
+test("degrades the rightmost slot first so the leftmost segment survives longest", () => {
+	const slots = [["keep"], ["wide-middle", "mid"], ["wide-right", undefined]];
+
+	// At a width that could fit either "keep │ mid │ wide-right" (23) or
+	// "keep │ wide-middle" (18), slot order decides: the middle slot holds its
+	// widest option and the right slot drops instead.
+	assert.equal(findFittingCombination(slots, 23), "keep │ wide-middle");
+});
+
+test("returns undefined when nothing fits", () => {
+	const slots = [["a-very-long-status"], ["context"]];
+
+	assert.equal(findFittingCombination(slots, 5), undefined);
+	// An all-optional slot set can still collapse to the empty string.
+	assert.equal(findFittingCombination([[undefined]], 0), "");
+	assert.equal(findFittingCombination([], 0), "");
 });

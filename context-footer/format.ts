@@ -159,3 +159,38 @@ export function truncateSegment(value: string, width: number): string {
 export function fitsWidth(value: string, width: number): boolean {
 	return visibleWidth(value) <= width;
 }
+
+/**
+ * Responsive fallback search.
+ *
+ * Takes one candidate list per segment slot, ordered widest-first within each slot,
+ * and returns the first combination that fits the given width — degrading by dropping
+ * whole segments rather than emitting a half-rendered one (U3).
+ *
+ * The search is exhaustive over the cartesian product in slot order, so the leftmost
+ * slot degrades last. That ordering is behaviour: it is what keeps the agent status
+ * visible at narrow widths while the cost and model segments fall away first.
+ *
+ * Returns undefined when no combination fits; the caller decides what to do about it.
+ */
+export function findFittingCombination(slots: Array<Array<string | undefined>>, width: number): string | undefined {
+	if (slots.length === 0) {
+		const empty = combineFooterSegments([]);
+		return fitsWidth(empty, width) ? empty : undefined;
+	}
+
+	const search = (slotIndex: number, chosen: Array<string | undefined>): string | undefined => {
+		if (slotIndex === slots.length) {
+			const candidate = combineFooterSegments(chosen);
+			return fitsWidth(candidate, width) ? candidate : undefined;
+		}
+
+		for (const option of slots[slotIndex]!) {
+			const found = search(slotIndex + 1, [...chosen, option]);
+			if (found !== undefined) return found;
+		}
+		return undefined;
+	};
+
+	return search(0, []);
+}

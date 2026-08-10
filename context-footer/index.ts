@@ -3,6 +3,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import {
 	type ContextTone,
 	combineFooterSegments,
+	findFittingCombination,
 	fitsWidth,
 	formatContextMeter,
 	formatCost,
@@ -160,20 +161,10 @@ export default function contextFooterExtension(pi: ExtensionAPI): void {
 						: [undefined];
 					const cost = theme.fg("muted", formatCost(getCumulativeCost(ctx.sessionManager.getEntries())));
 
-					let bottom: string | undefined;
-					for (const context of contextOptions) {
-						for (const modelText of modelOptions) {
-							for (const costText of [cost, undefined]) {
-								const candidate = combineFooterSegments([status, context, modelText, costText]);
-								if (fitsWidth(candidate, width)) {
-									bottom = candidate;
-									break;
-								}
-							}
-							if (bottom) break;
-						}
-						if (bottom) break;
-					}
+					const bottom = findFittingCombination(
+						[[status], contextOptions, modelOptions, [cost, undefined]],
+						width,
+					);
 
 					return [top, bottom ?? truncateSegment(buildContextSegment(theme, usage, "percent"), width)];
 				},
