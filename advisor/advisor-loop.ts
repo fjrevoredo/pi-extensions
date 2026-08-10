@@ -1,19 +1,20 @@
 import type { Api, AssistantMessage, Context, Model, Usage } from "@earendil-works/pi-ai";
-import { Type } from "typebox";
 import type { AdvisorConfig, Advice } from "./contracts.ts";
-import { AdviceSchema, validateAdvice } from "./contracts.ts";
+import { validateAdvice } from "./contracts.ts";
 import { advisorCompletionOptions } from "./advisor-options.ts";
-import { createPathPolicy } from "./path-policy.ts";
+import { createPathPolicy, type PathPolicy } from "./path-policy.ts";
 import { executeRepositoryTool } from "./repository-tools.ts";
+import {
+	type AdvisorToolCall,
+	classifyTurn,
+	isPrivateTool,
+	isRepositoryTool,
+	PRIVATE_TOOLS,
+} from "./turn-policy.ts";
 
-const privateTools = [
-	{ name: "read", description: "Read one permitted text file. Output is capped and redacted.", parameters: Type.Object({ path: Type.String() }) },
-	{ name: "grep", description: "Search permitted repository text files with a regular expression.", parameters: Type.Object({ pattern: Type.String(), path: Type.Optional(Type.String()), maxDepth: Type.Optional(Type.Integer({ minimum: 0, maximum: 6 })) }) },
-	{ name: "find", description: "List permitted repository paths under a directory.", parameters: Type.Object({ path: Type.Optional(Type.String()), maxDepth: Type.Optional(Type.Integer({ minimum: 0, maximum: 6 })) }) },
-	{ name: "ls", description: "List one permitted repository directory.", parameters: Type.Object({ path: Type.Optional(Type.String()) }) },
-	{ name: "submit_advice", description: "Submit exactly one final advice object. Required fields: outcome (on_track, course_correct, not_ready, stop), non-empty summary, non-empty rationale, recommendedActions, risks with severity and description, verification, assumptions, and confidence. Use an empty risks array only for on_track with no concrete risk. This ends the consultation.", parameters: Type.Object({ advice: AdviceSchema }, { additionalProperties: false }) },
-] as const;
-export const PRIVATE_TOOL_NAMES = privateTools.map((tool) => tool.name);
+const INVALID_SUBMISSION_NOTICE =
+	"Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.";
+const READ_BUDGET_NOTICE = "Read-only tool budget is exhausted. Submit advice now without another repository tool call.";
 
 function addUsage(total: Usage | undefined, usage: Usage | undefined): Usage | undefined {
 	if (!usage) return total;
@@ -33,6 +34,48 @@ interface CompletionRegistry {
 	complete(model: Model<Api>, context: Context, options?: unknown): Promise<AssistantMessage>;
 }
 
+/**
+ * Execute one turn's repository calls in order, appending each result to the
+ * conversation. Returns the new running count, or `invalid` for a call the turn
+ * policy does not admit.
+ *
+ * Calls are executed as they are walked, so a valid read followed by an unknown
+ * name leaves the read run and counted. That is pre-existing behaviour and is
+ * deliberately preserved (§19); turn-policy.ts explains why it is not hoisted.
+ */
+async function runRepositoryCalls(input: {
+	calls: AdvisorToolCall[];
+	policy: PathPolicy;
+	context: Context;
+	readOnlyToolCalls: number;
+	maxReadOnlyToolCalls: number;
+	signal: AbortSignal;
+	now: () => number;
+}): Promise<{ readOnlyToolCalls: number; invalid?: true }> {
+	let readOnlyToolCalls = input.readOnlyToolCalls;
+	for (const call of input.calls) {
+		if (!isPrivateTool(call.name) || !isRepositoryTool(call.name)) return { readOnlyToolCalls, invalid: true };
+		if (readOnlyToolCalls >= input.maxReadOnlyToolCalls) {
+			input.context.messages.push(toolResult(call.id, call.name, READ_BUDGET_NOTICE, input.now));
+			continue;
+		}
+		readOnlyToolCalls += 1;
+		const output = await executeRepositoryTool(input.policy, call.name, call.arguments, input.signal);
+		input.context.messages.push(toolResult(call.id, call.name, output, input.now));
+	}
+	return { readOnlyToolCalls };
+}
+
+/**
+ * Orchestration only: set up the budget and the abort wiring, then walk turns.
+ * Every decision it makes is delegated — the turn policy to turn-policy.ts, the
+ * path filter to path-policy.ts, advice validation to contracts.ts.
+ *
+ * Deviates from F5's ~40 lines: what remains is five pieces of loop state
+ * (usage, read count, and the three submission flags) that a further split would
+ * have to thread through helpers and read back, which is more error-prone than
+ * the sequence it replaces, not less.
+ */
 export async function runAdvisorLoop(input: {
 	registry: CompletionRegistry;
 	model: Model<Api>;
@@ -52,7 +95,11 @@ export async function runAdvisorLoop(input: {
 	const signal = AbortSignal.any(input.signal ? [input.signal, timeout.signal] : [timeout.signal]);
 	const options = advisorCompletionOptions(input.model, input.config.thinking, input.config.limits.maxAdvisorOutputTokens, signal);
 	if (!options) return { readOnlyToolCalls: 0, failure: "invalid_response" };
-	const context: Context = { systemPrompt: input.systemPrompt, messages: [{ role: "user", content: input.evidence, timestamp: now() }], tools: [...privateTools] };
+	const context: Context = {
+		systemPrompt: input.systemPrompt,
+		messages: [{ role: "user", content: input.evidence, timestamp: now() }],
+		tools: [...PRIVATE_TOOLS],
+	};
 	const policy = createPathPolicy({
 		root: input.root,
 		agentDirectory: input.agentDirectory,
@@ -70,36 +117,34 @@ export async function runAdvisorLoop(input: {
 			const response = await input.registry.complete(input.model, context, options);
 			usage = addUsage(usage, response.usage);
 			context.messages.push(response);
-			const calls = response.content.filter((part: unknown): part is { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> } => Boolean(part && typeof part === "object" && (part as { type?: string }).type === "toolCall"));
-			if (calls.length === 0) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-			const submissions = calls.filter((call) => call.name === "submit_advice");
-			if (submissions.length > 1 || (submissions.length === 1 && calls.length !== 1)) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-			if (correctionOnly && (calls.length !== 1 || calls[0]?.name !== "submit_advice")) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-			for (const call of calls) {
-				if (!PRIVATE_TOOL_NAMES.includes(call.name as (typeof PRIVATE_TOOL_NAMES)[number])) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-				if (call.name === "submit_advice") {
-					if (submitted) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-					submitted = true;
-					const advice = validateAdvice(call.arguments.advice);
-					if (!advice) {
-						invalidSubmissions += 1;
-						if (invalidSubmissions > 1) return { usage, readOnlyToolCalls, failure: "invalid_response" };
-						context.messages.push(toolResult(call.id, call.name, "Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.", now));
-						correctionOnly = true;
-						submitted = false;
-						continue;
-					}
-					return { advice, usage, readOnlyToolCalls };
-				}
-				if (call.name !== "read" && call.name !== "grep" && call.name !== "find" && call.name !== "ls") return { usage, readOnlyToolCalls, failure: "invalid_response" };
-				if (readOnlyToolCalls >= input.config.limits.maxReadOnlyToolCalls) {
-					context.messages.push(toolResult(call.id, call.name, "Read-only tool budget is exhausted. Submit advice now without another repository tool call.", now));
-					continue;
-				}
-				readOnlyToolCalls += 1;
-				const output = await executeRepositoryTool(policy, call.name, call.arguments, signal);
-				context.messages.push(toolResult(call.id, call.name, output, now));
+			const turnResult = classifyTurn(response.content, { correctionOnly });
+			if (turnResult.kind === "invalid") return { usage, readOnlyToolCalls, failure: "invalid_response" };
+
+			if (turnResult.kind === "submit") {
+				const call = turnResult.call;
+				if (submitted) return { usage, readOnlyToolCalls, failure: "invalid_response" };
+				submitted = true;
+				const advice = validateAdvice(call.arguments.advice);
+				if (advice) return { advice, usage, readOnlyToolCalls };
+				invalidSubmissions += 1;
+				if (invalidSubmissions > 1) return { usage, readOnlyToolCalls, failure: "invalid_response" };
+				context.messages.push(toolResult(call.id, call.name, INVALID_SUBMISSION_NOTICE, now));
+				correctionOnly = true;
+				submitted = false;
+				continue;
 			}
+
+			const executed = await runRepositoryCalls({
+				calls: turnResult.calls,
+				policy,
+				context,
+				readOnlyToolCalls,
+				maxReadOnlyToolCalls: input.config.limits.maxReadOnlyToolCalls,
+				signal,
+				now,
+			});
+			readOnlyToolCalls = executed.readOnlyToolCalls;
+			if (executed.invalid) return { usage, readOnlyToolCalls, failure: "invalid_response" };
 		}
 		return { usage, readOnlyToolCalls, failure: "invalid_response" };
 	} catch {
