@@ -177,7 +177,7 @@ None.
 
 #### Task 3.3: Port `permission-gate` to TypeScript (R1, T1, P4)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: The policy catalogue is typechecked, and its cases run under `node --test`.
 - Steps:
   1. `git mv permission-gate/core.mjs permission-gate/core.ts`.
@@ -188,6 +188,7 @@ None.
   6. Confirm `sync-extensions.sh` excludes `*/test/` so the new test directory does not reach the runtime.
 - Validation: `npm run typecheck` clean; `node --test` root passes and the new file covers the same number of command cases the old script did — **43 command cases plus the normalization and approval-key checks**; `bash sync-extensions.sh --dry-run` shows no `permission-gate/test/` entries; after sync, the user confirms `/reload` and one gated command still prompts.
 - Notes: Retiring `validate.mjs` is deliberate and its rationale is in standard §18 — do not reintroduce a post-sync smoke script. Every rule must keep at least one positive and one negative case (`P4`).
+- Result: All 43 command cases plus the normalization and approval-key checks carried over; root `node --test` is 48/48 and `npm run typecheck` is clean for the first time. The port surfaced one genuine finding the JSDoc form had hidden, and it is the strongest argument in the standard's §18 case for `R1`: pi's `ToolCallEvent` union includes `CustomToolCallEvent`, whose `toolName` is a plain `string`, so `event.toolName !== "bash"` does **not** narrow the event and `event.input.command` is `unknown` — an extension-registered tool named `bash` reaches the gate with an arbitrary payload. `normalizeCommand`/`evaluateDangerousCommand` are therefore typed `unknown` (the honest boundary type, and what the untyped `.mjs` was doing implicitly), which makes the pre-existing `String(command ?? "")` coercion load-bearing rather than dead. No behaviour change.
 
 ### Milestone 4: Formatting And Enforcement
 
