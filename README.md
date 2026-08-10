@@ -6,14 +6,14 @@ Private source-of-truth repository for Francisco's pi extensions.
 
 This repo is the canonical home for custom pi extensions that are loaded from `~/.pi/agent/extensions/` at runtime.
 
-Current extensions:
+Every extension is a directory with its entrypoint at `<name>/index.ts` and its own `README.md`:
 
-- `ask-user.ts` — TUI clarification tool for structured user questions
-- `ask-user/validation.ts` — pure `ask_user` input normalization and validation
-- `permission-gate.ts` — top-level permission gate entrypoint
-- `permission-gate/` — supporting modules for the permission gate extension
-- `context-footer/` — two-row TUI footer with hard token-based context thresholds
-- `advisor/` — configured read-only technical advisor with the `consult_advisor({})` tool
+- [`ask-user/`](ask-user/README.md) — TUI clarification tool for structured user questions
+- [`permission-gate/`](permission-gate/README.md) — prompts before dangerous `bash` commands
+- [`context-footer/`](context-footer/README.md) — two-row TUI footer with hard token-based context thresholds
+- [`advisor/`](advisor/README.md) — configured read-only technical advisor with the `consult_advisor({})` tool
+
+Engineering standard: [`docs/PI_EXTENSIONS_BEST_PRACTICES.md`](docs/PI_EXTENSIONS_BEST_PRACTICES.md).
 
 ## `ask_user` option contract
 
@@ -37,18 +37,32 @@ Current extensions:
 
 - Reload pi with `/reload` to pick up runtime changes.
 
+## Setup
+
+One dependency set at the repository root:
+
+```bash
+npm install
+git config core.hooksPath .githooks   # once per clone; runs the checks below before each commit
+```
+
 ## Expected validation
 
-At minimum:
+```bash
+npm run typecheck              # tsc --build across all four extensions
+node --test                    # the whole suite, from the repository root
+npm run lint                   # biome check .
+pi --list-models               # confirms extensions still load
+bash sync-extensions.sh --dry-run   # review, then run it without --dry-run
+```
 
-1. `pi --list-models` — confirms extensions still load
-2. `node --experimental-strip-types --test ask-user/validation.test.ts` — runs the pure ask-user contract tests
-3. `npm --prefix advisor test && npm --prefix advisor run typecheck` — validates the advisor contract and private read-only boundary
-4. `bash sync-extensions.sh` — updates the runtime extension directory
-5. `/reload` inside pi — reloads the runtime
-6. Run a focused manual sanity check for the changed extension
+Then `/reload` inside pi and run a focused manual check of whatever changed.
 
-For TUI-heavy extensions like `ask-user.ts`, validate the real interaction flow in pi after reload, including explicit input/editor branches and the built-in fallback.
+`node --test` is the only test runner. It needs no flags on Node 24 and takes no directory argument — run it bare from the root, or pass a file glob such as `node --test ask-user/test/*.test.ts`.
+
+The first three commands are also the pre-commit hook, so in practice only the last three are manual. `git commit --no-verify` skips the hook for a deliberate WIP commit.
+
+For TUI-heavy extensions like `ask-user`, automated tests do not replace validating the real interaction flow in pi after reload, including explicit input/editor branches and the built-in fallback.
 
 ## Notes
 

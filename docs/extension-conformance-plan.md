@@ -269,13 +269,13 @@ None.
 
 ### Milestone 6: Deferred Quality Items
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Purpose: Close the remaining `SHOULD` gaps recorded in the standard's conformance table. Optional as a group; may be marked `SKIPPED` without affecting anything above.
 - Exit Criteria: The conformance table in standard §16 has no remaining `✗` or `~` for `S3`, `F3`, `U5`, or `L6`, and the table is updated to match reality.
 
 #### Task 6.1: Derive key hints from the keybindings manager (U5)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Users with custom keybindings see correct hints.
 - Steps:
   1. In `ask-user/index.ts`, import `keyHint` from `@earendil-works/pi-coding-agent` — verified re-exported from the package root, so no deep import is needed (`R4`, `R5`).
@@ -287,7 +287,7 @@ None.
 
 #### Task 6.2: Extract the footer's responsive fallback search (S3, F5)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: `context-footer`'s `render()` contains no decision logic.
 - Steps:
   1. Move the triple-nested candidate search out of `render()` in `context-footer/index.ts` into a pure exported function in `context-footer/format.ts` that takes candidate segment lists and a width and returns the first combination that fits.
@@ -298,7 +298,7 @@ None.
 
 #### Task 6.3: Move display formatting out of the wizard (S3)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: The `ask-user` wizard component holds interaction state only.
 - Steps:
   1. Move `buildDisplayOptions()`'s pure transformation — including the `(recommended)` label suffix and the `Something else` fallback construction — into a pure exported function in `ask-user/validation.ts` or a new `ask-user/display.ts`.
@@ -309,7 +309,7 @@ None.
 
 #### Task 6.4: Narrow the wizard constructor signature (F3)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: `AskUserWizard` is constructible without consulting its definition.
 - Steps:
   1. Introduce a `WizardDeps` interface covering `tui`, `theme`, `keybindings`, `done`, `title`, `intro`, `questions`.
@@ -319,7 +319,7 @@ None.
 
 #### Task 6.5: Add the two missing extension READMEs (L6)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Every extension documents itself.
 - Steps:
   1. Create `ask-user/README.md`: purpose, the option contract (both `responseType` branches and the built-in fallback), TUI-only limitation, and how to run its tests. Move the option-contract detail currently in the root `README.md` here and leave a pointer behind.
@@ -329,13 +329,13 @@ None.
 
 ### Milestone 7: Documentation And `advisor`
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Purpose: Make the standard discoverable and binding for future agents, and close the one structural `advisor` gap.
 - Exit Criteria: `AGENTS.md` points at the standard as authoritative and lists the real validation commands; `README.md` describes the current layout; `advisor` runs its tests with no obsolete flags.
 
 #### Task 7.1: Remove the obsolete strip-types flag from `advisor` (T1)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: `advisor` uses the standard test invocation.
 - Steps:
   1. There are exactly two live sites: `advisor/package.json` (its `test` script) and `README.md` line 75. Task 1.2 deletes `advisor/package.json`, which resolves the first; Task 7.2 rewrites the second. Confirm both are gone rather than assuming.
@@ -351,7 +351,7 @@ None.
 
 #### Task 7.2: Bring `AGENTS.md` and `README.md` up to the post-migration reality (D5)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Both files describe the repository as it now is, and every command in them runs as written.
 - Steps:
   1. **`AGENTS.md` — scope.** Replace the stale `Top-level .ts extension entrypoints` bullet with the directory-per-extension shape, and state pi's two discovery shapes (`*.ts` and `*/index.ts`) with the note that new extensions use the directory form (`L1`).
