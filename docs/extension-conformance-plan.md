@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Plan Status: READY FOR APPROVAL
+- Plan Status: IN PROGRESS
 - Created: 2026-08-10
 - Last Updated: 2026-08-10
 - Owner: Coding agent
-- Approval: PENDING
+- Approval: APPROVED
 
 ## Status Legend
 
@@ -49,13 +49,13 @@ None.
 
 ### Milestone 0: Bind The Standard
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Purpose: Make the standard authoritative in `AGENTS.md` before any migration work begins, so every agent that touches this repository from here on is bound by it — including whoever executes the rest of this plan.
 - Exit Criteria: `AGENTS.md` names `docs/PI_EXTENSIONS_BEST_PRACTICES.md` as authoritative, explains MUST/SHOULD, and points at this plan; it references no command or path that does not yet exist.
 
 #### Task 0.1: Add the enforcement pointer to `AGENTS.md` (D5)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: An agent opening this repository is told to read and follow the standard, without being shown any tooling that Milestones 1–4 have not built yet.
 - Steps:
   1. Add a `## Read this first` section at the very top of `AGENTS.md`, above `## Repository role`, containing:

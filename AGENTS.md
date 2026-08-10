@@ -1,5 +1,21 @@
 # AGENTS.md
 
+## Read this first
+
+`docs/PI_EXTENSIONS_BEST_PRACTICES.md` is the authoritative engineering standard for this repository.
+Read it before changing any extension. It is not advisory.
+
+- **MUST** rules are non-negotiable — breaking one is a defect, not a style disagreement.
+  **SHOULD** rules are the default; deviating is allowed but needs a one-line comment in the code saying why.
+- Rules are numbered (`L1`, `R2`, `A5`, `C3`, …). Cite the relevant IDs in commit messages and review notes.
+- The standard is self-contained: the rules themselves, the measured evidence behind them (§17), the decisions
+  taken and alternatives rejected (§18), the deliberate non-goals (§19), and the sources (§20). Check §18 before
+  re-litigating a rule.
+- Pending conformance work is tracked in `docs/extension-conformance-plan.md`. Keep its task statuses accurate
+  while working it, and do not start it without user approval.
+- The repository does not fully conform yet. When you touch a file, bring it into conformance rather than matching
+  surrounding non-conformance — except where the plan above sequences that work into a later milestone.
+
 ## Repository role
 
 This repository is the source of truth for Francisco's private pi extensions.
