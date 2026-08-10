@@ -92,7 +92,7 @@ export async function runAdvisorLoop(input: {
 			}
 		}
 		return { usage, readOnlyToolCalls, failure: "invalid_response" };
-	} catch (error) {
+	} catch {
 		if (signal.aborted) return { usage, readOnlyToolCalls, failure: timeout.signal.aborted ? "timeout" : "aborted" };
 		return { usage, readOnlyToolCalls, failure: "provider_error" };
 	} finally { clearTimeout(timer); }

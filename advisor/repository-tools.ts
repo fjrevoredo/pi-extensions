@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import type { PathPolicy } from "./path-policy.ts";
@@ -58,7 +59,7 @@ async function walk(policy: PathPolicy, start: string, maxDepth: number, signal?
 	async function visit(directory: string, depth: number): Promise<void> {
 		signal?.throwIfAborted();
 		if (depth > maxDepth || output.length >= MAX_ENTRIES) return;
-		let entries; try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+		let entries: Dirent[]; try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
 		for (const entry of entries) {
 			if (output.length >= MAX_ENTRIES || EXCLUDED.has(entry.name)) continue;
 			const requested = relative(root, join(directory, entry.name));
