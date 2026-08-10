@@ -47,7 +47,14 @@ context-footer/          ← the extension is the directory
 **L6 — SHOULD: every extension has a `README.md`** covering purpose, agent-facing contract, runtime limitations (e.g. TUI-only), and how to test it.
 
 **L7 — MUST: nothing reaches the runtime directory except what pi loads.**
-Test files, `tsconfig.json`, the root `package.json`, lockfiles, and docs must be excluded by `sync-extensions.sh`. When you add a new kind of non-runtime file, update the sync exclusions in the same commit. Anchor root-only exclusions with a leading slash (`/package.json`) so a future extension that genuinely needs its own runtime `package.json` can still carry one.
+Test files, `tsconfig*.json`, the root `package.json`, lockfiles, `biome.json`, `.githooks/`, `*.tsbuildinfo`, and docs must be excluded by `sync-extensions.sh`. When you add a new kind of non-runtime file, update the sync exclusions in the same commit.
+
+Two exclusion mechanics that are easy to get wrong, both of which have already bitten this repo:
+
+- **Glob, not literal.** `tsconfig.json` as an exclusion does *not* cover `tsconfig.base.json`. Use `tsconfig*.json`.
+- **Anchor root-only exclusions with a leading slash.** `/package.json` excludes the root manifest while still letting a future extension that genuinely needs a runtime `package.json` carry its own. An unanchored `package.json` would silently strip that too.
+
+Verify with `bash sync-extensions.sh --dry-run` rather than reasoning about the patterns (C5).
 
 ---
 
@@ -240,7 +247,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 **U7 — SHOULD: keep the default (collapsed) result view to one or two lines and put detail behind `expanded`.**
 
 **U8 — SHOULD: use pi's built-in components before writing your own.**
-`SelectList`, `SettingsList`, `BorderedLoader`, `Input`, and `Editor` cover most cases, and `docs/tui.md` lists "don't rebuild them" as a Key Rule. Writing a replacement is allowed when a built-in genuinely cannot express the requirement — `ask-user`'s `MultilineSelectList` exists because `SelectList` cannot wrap a label across lines while keeping one logical option per selection index — but the reason must be stated in the module header, as it is there. Also from the same Key Rules, already satisfied across the repo: take `theme` from the `ctx.ui.custom(...)` callback rather than importing it, explicitly type the `DynamicBorder` colour callback parameter, and call `tui.requestRender()` after every state change in `handleInput`.
+`SelectList`, `SettingsList`, `BorderedLoader`, `Input`, and `Editor` cover most cases, and pi's `docs/tui.md` lists "don't rebuild them" as a Key Rule. Writing a replacement is allowed when a built-in genuinely cannot express the requirement — `ask-user`'s `MultilineSelectList` exists because `SelectList` cannot wrap a label across lines while keeping one logical option per selection index — but the reason must be stated in the module header, as it is there. Also from the same Key Rules, already satisfied across the repo: take `theme` from the `ctx.ui.custom(...)` callback rather than importing it, explicitly type the `DynamicBorder` colour callback parameter, and call `tui.requestRender()` after every state change in `handleInput`.
 
 ---
 
@@ -296,6 +303,8 @@ The repository is a **single root workspace**. Every dependency here is dev-only
 
 One `npm install`, one dependency set, one place to bump on a pi upgrade. An extension that genuinely needs a runtime dependency **MAY** carry its own `package.json` with that dependency in `dependencies` — and then L7 and R5 both apply.
 
+`"type": "module"` is load-bearing, not cosmetic. With `module: NodeNext` and `verbatimModuleSyntax` (C3), omitting it makes TypeScript treat every `.ts` file as CommonJS, and *every* file fails with `TS1287: A top-level 'export' modifier cannot be used on value declarations in a CommonJS module`. If you ever see a wall of `TS1287`, this field is missing.
+
 **C2 — MUST: all `@earendil-works/*` packages are pinned to the exact version of the installed `pi` runtime.**
 The installed runtime is **`pi 0.84.1`**, and the single root `package.json` pins every `@earendil-works/*` package to it. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
 
@@ -323,11 +332,29 @@ The installed runtime is **`pi 0.84.1`**, and the single root `package.json` pin
 // <extension>/tsconfig.json
 {
   "extends": "../tsconfig.base.json",
+  "compilerOptions": { "composite": true },
   "include": ["*.ts", "test/*.ts"]
 }
 ```
 
-`erasableSyntaxOnly` enforces R2 (`TS1294`); `moduleResolution: NodeNext` enforces R3 (`TS2835`); `verbatimModuleSyntax` enforces R7; `allowImportingTsExtensions` permits R3's explicit extensions. Per-extension configs keep each extension independently checkable.
+```json
+// tsconfig.json (root) — what `npm run typecheck` actually resolves
+{
+  "files": [],
+  "references": [
+    { "path": "./ask-user" },
+    { "path": "./permission-gate" },
+    { "path": "./context-footer" },
+    { "path": "./advisor" }
+  ]
+}
+```
+
+All three files are required. `typecheck` is `tsc --build`, which needs a root project that references each extension — without it the command checks nothing. `composite: true` is what makes an extension referenceable, and it is compatible with the base's `noEmit: true`. **Add a `references` entry whenever you add an extension**, or it is silently never typechecked.
+
+`composite` writes a `tsconfig.tsbuildinfo` beside each extension `tsconfig.json`; gitignore `*.tsbuildinfo` and exclude it from the sync (L7).
+
+`erasableSyntaxOnly` enforces R2 (`TS1294`); `moduleResolution: NodeNext` enforces R3 (`TS2835`); `verbatimModuleSyntax` enforces R7 (`TS1484`); `allowImportingTsExtensions` permits R3's explicit extensions. Per-extension configs keep each extension independently checkable. Verified: `tsc --build` surfaces both ordinary type errors and `erasableSyntaxOnly` violations *through* references, so the root project is a real gate rather than a no-op.
 
 This baseline was run against `context-footer` before being adopted: it reports exactly three errors, all of them the R3 violations, and nothing else. With the R3 fix applied it typechecks clean and `node --test` runs all 10 tests with no flags and no `tsx`.
 
@@ -349,7 +376,9 @@ Three things the installed Biome (2.5.7) forces, which the snippet above predate
 - Exclusions go in `files.includes` with `!`-prefixed entries (Biome 2.x), not `files.ignore` (1.x). Check the installed Biome's own schema before writing them.
 - **`biome.json` cannot carry comments** — only `biome.jsonc` can. Adding one silently invalidates the config, at which point Biome falls back to its defaults and starts checking directories you meant to exclude. Rationale for a disabled rule therefore belongs in `AGENTS.md`, not inline.
 
-Two `recommended` rules are turned off in this repo, both deliberately: `noExplicitAny` for test files only (R6 already permits it in fakes), and `noNonNullAssertion` repo-wide (Biome's only offered fix is `?.`, which it marks *unsafe* because it short-circuits where the assertion would throw).
+Two `recommended` rules are turned off in this repo, both deliberately: `noExplicitAny` for test files only, via an `overrides` block matching `**/test/**` and `**/*.test.ts` (R6 already permits it in fakes), and `noNonNullAssertion` repo-wide (Biome's only offered fix is `?.`, which it marks *unsafe* because it short-circuits where the assertion would throw — applying it would be a behaviour change).
+
+To suppress a single genuine finding in place, `// biome-ignore <rule>: <reason>` **must be the last comment line directly above the offending line**. Additional explanatory `//` lines go *above* the directive, never between it and the code — a directive separated from its target silently does nothing, and the finding stays.
 
 **C5 — SHOULD: review `sync-extensions.sh --dry-run` whenever the file layout changes**, and update the exclusion list in the same commit (L7).
 
@@ -410,7 +439,14 @@ Measured wall-clock on this repo: ~3 seconds. The reason this exists rather than
 
 ## 15. Migration plan
 
-**Carried out.** All eight steps below are complete, together with the §14 hook and the deferred quality items. The execution record — including every deviation, correction, and finding — is `docs/extension-conformance-plan.md`. §16 describes the resulting state. The table is kept here because the *sequencing rationale* is still the guidance for any future migration of this kind.
+**Carried out**, together with the §14 hook and the deferred quality items (`U5`, `S3`/`F5`, `F3`, `L6`). §16 describes the resulting state; the findings it surfaced are recorded there, and the toolchain facts it established are in §17. The table is kept because the *sequencing rationale* — cheapest first, layout before formatting, reformat last — is the guidance for any future migration of this kind.
+
+Four things were learned in the doing that the table does not show, and that would apply again:
+
+- **Order matters more than the table implies.** Steps 4 and 5 (layout, language) must land before step 6 (formatting), or files get reformatted twice and the diffs become unreviewable. Equally, the formatting pass must come *after* the last file has moved, not merely after the last file has been edited.
+- **Typechecking previously-unchecked code surfaces findings, not just errors.** Step 2 is worth doing early precisely because it is diagnostic: it is what revealed the `ToolCallEvent` narrowing gap in §16.
+- **Batch the manual `/reload` checks.** Syncing a half-migrated tree into the live runtime directory once per step is a real risk for no benefit. One checkpoint after the layout milestone and one at the end is enough; every automated check still runs per step.
+- **Verify a moved function against the original, not against its tests.** For each refactor that relocated logic, the pre-move implementation was recovered from git and run side by side with the new one over generated inputs. That is what makes "no behaviour change" a claim rather than a hope, and it is cheap.
 
 Ratified sequence — one concern per commit, cheapest and lowest-risk first, reformat last so no file is touched twice. Each step is independently revertible; stopping part-way leaves the repo consistent.
 
@@ -433,7 +469,7 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 
 ## 16. Conformance of the current extensions
 
-Assessed against this document as of the current working tree, **after** the §15 migration. The record of how it was carried out is `docs/extension-conformance-plan.md`.
+Assessed against this document as of the current working tree, **after** the §15 migration.
 
 | Rule area | `ask-user` | `permission-gate` | `context-footer` | `advisor` |
 |---|---|---|---|---|
@@ -488,6 +524,10 @@ Every rule resting on a claim about the toolchain was measured, not assumed. Rec
 | pi discovers only two extension shapes | pi `docs/extensions.md`, "Extension Locations" | `*.ts` and `*/index.ts`, per scope | L1 |
 | Installed runtime version | `pi --version` | `0.84.1` | C2 |
 | `keyHint`/`keyText` are unused | grep across the repo | Absent; `ask-user.ts` hard-codes 4 hint strings | U5 |
+| Extensions share pi's module instance | Loaded a probe extension through pi's own jiti with its real alias map, after initialising the theme in the host | Host and extension return byte-identical `keyHint()` output — the same singleton | U5, R5 |
+| `tsc --build` is a real gate through references | Injected a parameter property, an `enum`, an extensionless import, a value-import of a type, and an incomplete options object | Caught as `TS1294`, `TS1294`, `TS2835`, `TS1484`, `TS2345` | C3 |
+
+The module-instance result is worth keeping in mind whenever an extension reaches for something stateful in a pi package. pi's extension loader aliases `@earendil-works/*` to its own `dist` entrypoints and calls jiti with `moduleCache: false`, which *looks* like every extension would get a private copy — in which case any module-level singleton (the theme, the keybindings manager) would be uninitialised and throw on first use. It does not: the extension resolves to the same instance the host already initialised. That is what makes `keyHint()` (U5) safe to call from an extension, and it is why R5's four supported packages can be relied on for more than pure functions. None of the 78 official examples exercise this, so it was measured rather than assumed.
 
 Two rules exist *only* because of these measurements:
 
@@ -531,7 +571,7 @@ Deliberately absent. Do not add these without a decision.
 
 ## 20. Sources
 
-**pi runtime, shipped with `@earendil-works/pi-coding-agent@0.84.1`** — installed locally under any extension's `node_modules/`. Authoritative in a way no third-party writing is: it is the contract the runtime implements, at the version installed.
+**pi runtime, shipped with `@earendil-works/pi-coding-agent@0.84.1`.** Authoritative in a way no third-party writing is: it is the contract the runtime implements, at the version installed. The `docs/` and `examples/` paths below are pi's own, not this repository's — read them at `node_modules/@earendil-works/pi-coding-agent/` after `npm install`.
 
 - `docs/extensions.md` — extension locations and discovery (L1), extension styles, lifecycle events and session-replacement footguns (E-series), `ExtensionAPI`, custom tools and `StringEnum`/error-signalling requirements (A-series), custom rendering best practices (U2), error handling, mode behaviour (A9)
 - `docs/tui.md` — Line Width, marked *Critical* (U1); `Focusable`/IME (U6); Key Rules (U8)

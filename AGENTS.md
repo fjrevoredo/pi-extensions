@@ -11,10 +11,11 @@ Read it before changing any extension. It is not advisory.
 - The standard is self-contained: the rules themselves, the measured evidence behind them (§17), the decisions
   taken and alternatives rejected (§18), the deliberate non-goals (§19), and the sources (§20). Check §18 before
   re-litigating a rule.
-- Pending conformance work is tracked in `docs/extension-conformance-plan.md`. Keep its task statuses accurate
-  while working it, and do not start it without user approval.
-- The repository does not fully conform yet. When you touch a file, bring it into conformance rather than matching
-  surrounding non-conformance — except where the plan above sequences that work into a later milestone.
+- The repository **is** in conformance — §16 records the current state, with no outstanding violations. The one
+  deliberate exception is `advisor`, whose style pass is deferred until it is promoted (see below). Keep it that
+  way: bring code into conformance as you touch it, and do not let a new file match old habits.
+- The mechanical rules are enforced by the pre-commit hook, not by good intentions. If a check is in your way,
+  fix the code — do not weaken the rule, and do not reach for `--no-verify` outside a deliberate WIP commit.
 
 ## Repository role
 
