@@ -17,37 +17,7 @@ Current extensions:
 
 ## `ask_user` option contract
 
-`ask_user` is TUI-only and presents explicit options as single-select branches. Every explicit option must include `value`, `label`, `description`, and `responseType`.
-
-Use exactly one of these shapes:
-
-```ts
-{
-  value: "recommended",
-  label: "Use the recommended version",
-  description: "Newest compatible version.",
-  responseType: "select",
-}
-```
-
-```ts
-{
-  value: "custom",
-  label: "Enter another version",
-  description: "Use a custom version.",
-  responseType: "freeText",
-  freeTextMode: "input", // or "editor"
-  freeTextPlaceholder: "Enter exact version",
-}
-```
-
-Do not omit `responseType`. Do not include `freeTextMode` or `freeTextPlaceholder` on `responseType: "select"` options. Explicit free-text options require both free-text fields. The built-in `Something else` fallback is added automatically to every question.
-
-For bulk workflows, add an explicit fixed option such as `archive-all`. Do not infer multiple selections from a free-text response; multi-select is not part of this API.
-
-### Option display behavior
-
-Long labels use a shared primary column. The column starts at 32 cells when the terminal permits it, grows when needed up to two-fifths of the available row width, wraps labels to at most three lines, and uses `...` only when content still does not fit. The list keeps one logical option per selection and scrolls by option rather than by wrapped line.
+`ask_user` is TUI-only and presents explicit options as single-select branches, each declaring its own `responseType`. The full contract — both option shapes, the built-in `Something else` fallback, and the option display behaviour — is documented in [`ask-user/README.md`](ask-user/README.md).
 
 ## Working model
 
