@@ -33,8 +33,8 @@ import {
 	type AskUserOption,
 	type AskUserQuestion,
 	type FreeTextMode,
-} from "./ask-user/validation.ts";
-import { MultilineSelectList, type MultilineSelectItem } from "./ask-user/multiline-select-list.ts";
+} from "./validation.ts";
+import { MultilineSelectList, type MultilineSelectItem } from "./multiline-select-list.ts";
 
 /**
  * Structured answer returned by the tool.

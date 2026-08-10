@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { KeybindingsManager, SelectListTheme } from "@earendil-works/pi-tui";
-import { MultilineSelectList, type MultilineSelectItem } from "./multiline-select-list.ts";
+import { MultilineSelectList, type MultilineSelectItem } from "../multiline-select-list.ts";
 
 // Fixed sentinels rather than real key sequences: this file asserts on dispatch,
 // not on the keybinding table.

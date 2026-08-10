@@ -4,7 +4,7 @@ import {
 	normalizeQuestions,
 	SOMETHING_ELSE_VALUE,
 	type AskUserParamsInput,
-} from "./validation.ts";
+} from "../validation.ts";
 
 const selectOption = {
 	value: "fixed",

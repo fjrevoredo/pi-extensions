@@ -110,7 +110,7 @@ None.
 
 ### Milestone 2: Make The Suite Green
 
-- Status: IN PROGRESS
+- Status: COMPLETED
 - Purpose: Remove the two latent defects that keep the repository from having a single working test command.
 - Exit Criteria: `node --test` at the repository root passes with zero failures; no extension depends on `tsx`; `npm run typecheck` is clean.
 - **Correction (execution):** the typecheck half of this exit criterion cannot be met in this milestone. The one remaining error is `TS7016` on `permission-gate.ts` importing the untyped `./permission-gate/core.mjs`, and the plan assigns that port to Task 3.3. The test and `tsx` criteria are met here; typecheck goes clean at Task 3.3.
@@ -144,13 +144,13 @@ None.
 
 ### Milestone 3: Layout And Language
 
-- Status: TO BE DONE
+- Status: IN PROGRESS
 - Purpose: Give every extension the official directory shape and a single language, which is the only work that changes the runtime directory.
 - Exit Criteria: `~/.pi/agent/extensions/` contains only `ask-user/`, `permission-gate/`, `context-footer/`, `advisor/` (each with `index.ts`) and no stray top-level `.ts` entrypoints, test files, or configs; both restructured extensions have been exercised in a reloaded pi.
 
 #### Task 3.1: Restructure `ask-user` into the directory shape (L1, L5)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: `ask-user/index.ts` is the entrypoint and tests live in `ask-user/test/`.
 - Steps:
   1. `git mv ask-user.ts ask-user/index.ts`.

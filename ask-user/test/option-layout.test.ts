@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getVisibleOptionWindow, layoutOptions, type OptionLayoutItem } from "./option-layout.ts";
+import { getVisibleOptionWindow, layoutOptions, type OptionLayoutItem } from "../option-layout.ts";
 
 const item = (label: string, description?: string): OptionLayoutItem => ({
 	value: label.toLowerCase().replace(/\s+/gu, "-"),
