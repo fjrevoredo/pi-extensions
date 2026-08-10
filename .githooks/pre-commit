@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Enable once per clone with:
+#   git config core.hooksPath .githooks
+#
+# Runs the mechanical checks from docs/PI_EXTENSIONS_BEST_PRACTICES.md section 13.
+# Use `git commit --no-verify` for a deliberate WIP commit.
+set -euo pipefail
+
+npm run typecheck
+node --test
+npx biome check .

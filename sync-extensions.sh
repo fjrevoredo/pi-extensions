@@ -27,6 +27,8 @@ sync_extensions() {
     --exclude
     '.git/'
     --exclude
+    '.githooks/'
+    --exclude
     'node_modules/'
     --exclude
     'package-lock.json'
