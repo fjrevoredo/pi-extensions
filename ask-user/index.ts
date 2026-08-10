@@ -210,6 +210,24 @@ function createSelectListTheme(theme: Theme) {
 }
 
 /**
+ * Everything AskUserWizard needs from its caller.
+ *
+ * A single options object rather than seven positional parameters: the old signature
+ * (tui, theme, keybindings, done, title, intro, questions) could not be called
+ * correctly without checking the definition, and the two adjacent
+ * `string | undefined` parameters were silently swappable (F3).
+ */
+interface WizardDeps {
+	tui: TUI;
+	theme: Theme;
+	keybindings: KeybindingsManager;
+	done: (details: AskUserDetails) => void;
+	title: string | undefined;
+	intro: string | undefined;
+	questions: AskUserQuestion[];
+}
+
+/**
  * Single-run wizard component used by ctx.ui.custom(...).
  *
  * The wizard keeps all interaction state in memory for the duration of one tool call.
@@ -255,24 +273,16 @@ class AskUserWizard extends Container implements Focusable {
 	private readonly intro: string | undefined;
 	private readonly questions: AskUserQuestion[];
 
-	constructor(
-		tui: TUI,
-		theme: Theme,
-		keybindings: KeybindingsManager,
-		done: (details: AskUserDetails) => void,
-		title: string | undefined,
-		intro: string | undefined,
-		questions: AskUserQuestion[],
-	) {
+	constructor(deps: WizardDeps) {
 		super();
-		this.tui = tui;
-		this.theme = theme;
-		this.keybindings = keybindings;
-		this.done = done;
-		this.title = title;
-		this.intro = intro;
-		this.questions = questions;
-		this.titleText = title?.trim() || "Ask User";
+		this.tui = deps.tui;
+		this.theme = deps.theme;
+		this.keybindings = deps.keybindings;
+		this.done = deps.done;
+		this.title = deps.title;
+		this.intro = deps.intro;
+		this.questions = deps.questions;
+		this.titleText = deps.title?.trim() || "Ask User";
 		this.rebuild();
 	}
 
@@ -821,7 +831,15 @@ export default function askUser(pi: ExtensionAPI) {
 			}
 
 			const details = await ctx.ui.custom<AskUserDetails>((tui, theme, keybindings, done) => {
-				return new AskUserWizard(tui, theme, keybindings, done, params.title, params.intro, normalized.questions);
+				return new AskUserWizard({
+					tui,
+					theme,
+					keybindings,
+					done,
+					title: params.title,
+					intro: params.intro,
+					questions: normalized.questions,
+				});
 			});
 
 			return createToolResult(buildCompletionText(details), details);
