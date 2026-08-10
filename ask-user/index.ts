@@ -12,7 +12,7 @@
 
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
-import { DynamicBorder } from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, keyHint, keyText, rawKeyHint } from "@earendil-works/pi-coding-agent";
 import {
 	Container,
 	Editor,
@@ -20,6 +20,7 @@ import {
 	type Focusable,
 	Input,
 	Key,
+	type Keybinding,
 	type KeybindingsManager,
 	matchesKey,
 	Spacer,
@@ -382,7 +383,9 @@ class AskUserWizard extends Container implements Focusable {
 		}
 
 		this.addChild(new Spacer(1));
-		this.addChild(new Text(this.theme.fg("dim", this.getFooterHint()), 1, 0));
+		// No outer fg() here: keyHint/rawKeyHint already colour the key and its
+		// description, and wrapping them again would nest escape codes.
+		this.addChild(new Text(this.getFooterHint(), 1, 0));
 		this.addChild(new DynamicBorder((text: string) => this.theme.fg("accent", text)));
 		this.invalidate();
 		this.tui.requestRender();
@@ -628,17 +631,39 @@ class AskUserWizard extends Container implements Focusable {
 		this.addChild(new Text(this.theme.fg("warning", this.validationMessage), 1, 0));
 	}
 
+	/**
+	 * Compose a hint for a pair of bindings that read as one affordance ("up/down
+	 * navigate"). keyHint() takes a single id, so the pair is built from keyText() —
+	 * the same accessor keyHint uses internally — rather than hard-coding the arrow
+	 * glyphs, so a user with custom navigation keys still sees the right hint.
+	 */
+	private pairHint(first: Keybinding, second: Keybinding, description: string): string {
+		return this.theme.fg("dim", `${keyText(first)}/${keyText(second)}`) + this.theme.fg("muted", ` ${description}`);
+	}
+
 	private getFooterHint(): string {
+		const separator = this.theme.fg("dim", " • ");
+		const cancel = keyHint("tui.select.cancel", "cancel");
+		// The back affordance is matched with matchesKey(Key.shift("tab")) / Key.left rather
+		// than a named keybinding, so there is no id to resolve. rawKeyHint keeps it styled
+		// and visible instead of silently dropping the affordance from the hint line.
+		const backFromSelect = rawKeyHint("shift+tab/←", "back");
+		const backFromFreeText = rawKeyHint("shift+tab", "back");
+
 		if (this.state === "select") {
+			const navigate = this.pairHint("tui.select.up", "tui.select.down", "navigate");
+			const select = keyHint("tui.select.confirm", "select");
 			if (this.questions.length > 1 && this.questionIndex > 0) {
-				return "↑↓ navigate • enter select • shift+tab/← back • esc cancel";
+				return [navigate, select, backFromSelect, cancel].join(separator);
 			}
-			return "↑↓ navigate • enter select • esc cancel";
+			return [navigate, select, cancel].join(separator);
 		}
+
+		const submit = keyHint("tui.select.confirm", "submit");
 		if (this.state === "free-text-input" || this.state === "free-text-editor") {
-			return "enter submit • shift+tab back • esc cancel";
+			return [submit, backFromFreeText, cancel].join(separator);
 		}
-		return "enter submit • shift+tab/← back • esc cancel";
+		return [submit, backFromSelect, cancel].join(separator);
 	}
 
 	private getCurrentQuestion(): AskUserQuestion {
