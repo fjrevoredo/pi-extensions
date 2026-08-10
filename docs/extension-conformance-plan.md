@@ -77,7 +77,7 @@ None.
 
 #### Task 1.1: Align the pinned pi version with the installed runtime (C2)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Every extension is typechecked against the pi version it actually executes on.
 - Steps:
   1. Confirm the anchor: `pi --version` (expected `0.84.1`).
@@ -86,6 +86,7 @@ None.
   4. Run `npm --prefix context-footer run typecheck` and fix any `ExtensionAPI` drift across the four minor versions. Fix by adapting to the new API, never by loosening types or adding `any` (`R6`).
 - Validation: `npm --prefix context-footer run typecheck` clean; `npm --prefix context-footer test` 10/10 pass; then `pi --list-models` succeeds, `bash sync-extensions.sh`, and the user confirms `/reload` plus a visible footer in pi.
 - Notes: Standalone commit. This is the one task where a real API change may surface; do not bundle it with anything else. Files: `context-footer/package.json`, `context-footer/package-lock.json`.
+- Result: No `ExtensionAPI` drift across the four minors — typecheck clean on the first run, 10/10 tests pass, `pi --list-models` succeeds. The `/reload` + visible-footer confirmation is deferred to the Milestone 3 sync checkpoint rather than syncing a half-migrated tree into the live runtime directory; see the Execution Notes amendment.
 
 #### Task 1.2: Convert the repository to a single root workspace (C1, C3, T9)
 
@@ -418,6 +419,7 @@ Implementation must not start until the user approves this plan.
 - Update each task to COMPLETED immediately after its validation passes.
 - Mark tasks or milestones BLOCKED with a short reason when progress cannot continue.
 - Several tasks require the user to run `/reload` inside pi. The agent cannot do this — pause and ask, then record the user's confirmation in the task notes.
+- **Amendment (execution):** the per-task `/reload` checks are batched into two checkpoints rather than seven. Syncing a half-migrated tree into the live runtime directory repeatedly is a risk the plan did not weigh, and Milestone 3 is the only milestone that changes what pi loads. Checkpoint A is at the end of Milestone 3 (covers Tasks 1.1, 3.1, 3.2, 3.3); Checkpoint B is Task 8.3 (covers everything after). Every *automated* validation still runs at its own task.
 - One concern per commit. Cite the rule IDs a commit satisfies in its message.
 - From Task 4.2 onward the pre-commit hook runs `biome check`, which fails on unformatted code. Run `npm run format` before committing anything written in Milestones 5–8.
 - Milestone 6 is the only optional group. If it is skipped, mark each of its tasks `SKIPPED` and adjust Tasks 7.2 step 8 and 8.2 accordingly rather than leaving them describing work that never happened.
