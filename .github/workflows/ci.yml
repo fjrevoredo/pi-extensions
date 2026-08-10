@@ -1,0 +1,71 @@
+name: CI
+
+# The pre-commit hook (§14) is a fast local convenience that a fresh clone does
+# not have: `git config core.hooksPath .githooks` is per-clone local config and
+# cannot be committed. CI is the gate that is always present.
+#
+# This file defines no command of its own. Every check is an npm script, exactly
+# as .githooks/pre-commit calls it, so the two cannot drift.
+
+on:
+  push:
+    branches: [master]
+  # Deliberately unfiltered. Path filters would make a required status check
+  # unsatisfiable on a docs-only pull request, which is a bad trade for the
+  # three seconds these checks take.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job id is the only name, so branch protection references one string.
+  # ubuntu-latest only: advisor/test/path-access.test.ts calls symlink(), which
+  # needs privileges on Windows, and a macOS runner costs 10x to re-test what the
+  # developer's own machine already covers. Useful side effect — local runs
+  # exercise macOS openrsync, CI exercises GNU rsync 3.x.
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+
+      - name: Install
+        id: install
+        run: npm ci
+
+      # Each check is guarded rather than short-circuited so one run reports all
+      # three failures instead of only the first. `!cancelled()` rather than
+      # `always()`, which would burn a runner on every cancel-in-progress.
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+
+      - name: Test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm test
+
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      # These two need no node_modules, so they are not gated on the install.
+      - name: Runtime hygiene (L7)
+        if: ${{ !cancelled() }}
+        run: bash .github/scripts/check-runtime-hygiene.sh
+
+      - name: Hook and CI parity (§14)
+        if: ${{ !cancelled() }}
+        run: bash .github/scripts/check-hook-parity.sh
