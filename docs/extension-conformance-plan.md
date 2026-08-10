@@ -192,7 +192,7 @@ None.
 
 ### Milestone 4: Formatting And Enforcement
 
-- Status: IN PROGRESS
+- Status: COMPLETED
 - Purpose: Settle formatting once, after all files have stopped moving, and make the whole standard self-enforcing from then on.
 - Exit Criteria: `npm run lint` passes; a deliberately malformed commit is rejected by the hook; no file needs reformatting a second time.
 
@@ -219,7 +219,7 @@ None.
 
 #### Task 4.2: Add the tracked pre-commit hook (§14)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Typecheck, tests, and lint run automatically before every commit, from a version-controlled location.
 - Steps:
   1. Create `.githooks/pre-commit` with the script in standard §14 (`set -euo pipefail`; `npm run typecheck`; `node --test`; `npx biome check .`).
@@ -232,13 +232,13 @@ None.
 
 ### Milestone 5: Entrypoint Test Coverage
 
-- Status: TO BE DONE
+- Status: IN PROGRESS
 - Purpose: Extend the fake-`pi` harness pattern — currently proven only in `context-footer` — to the two extensions with the most behaviour and the least coverage.
 - Exit Criteria: Each of `ask-user` and `permission-gate` has a `test/index.test.ts` that drives its real entrypoint with no TUI and no pi runtime, and the root suite still passes.
 
 #### Task 5.1: Add a harness test for `ask-user` (T4, T6)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: The registered tool contract is asserted, not just the pure validation module.
 - Steps:
   1. Create `ask-user/test/index.test.ts` modelled on `context-footer/test/index.test.ts`: build a fake `pi` whose `registerTool(def)` stores `def`, call the default export with it, and assert on the captured definition.
@@ -248,6 +248,8 @@ None.
   5. Assert `renderResult` handles three shapes, using a stub `theme` whose `fg`/`bold` return their text argument unchanged: a cancelled result renders `Cancelled`; an error result renders the error text; a successful two-answer result renders both question labels, the chosen option labels, and the recommendation suffix when `acceptedRecommendation` is `false` and the question carries a `recommendedOptionLabel`.
 - Validation: `node --test` from `ask-user/` passes and the new file contributes at least 5 tests; deliberately changing `executionMode` to `"concurrent"` or removing `ask_user` from one guideline bullet each make a test fail.
 - Notes: Use `any` freely for the fakes (`R6` permits it in tests). Do not instantiate `AskUserWizard` or touch `ctx.ui.custom` — this task covers the tool definition and the non-TUI paths only. `renderCall` may also be asserted but is lower value than the above.
+- Result: 6 tests, all passing. Both prescribed mutation checks fail the suite as intended (`executionMode: "concurrent"`; dropping `ask_user` from a bullet).
+- **Finding — a real `A4` violation, and the one place this plan's "no behaviour changes" non-goal had to be crossed.** Three of the twelve `promptGuidelines` bullets did not name `ask_user`: the two option-shape bullets and the bulk-workflow bullet. Standard §16 records `ask-user` as `✓` for `A1`–`A11`, so this was previously unnoticed. The choice was to weaken the assertion or fix the bullets; weakening it would have removed the only thing making `A4` enforceable, so the three bullets were reworded to name the tool. This is model-facing prompt text, so it is a genuine (if minimal) change to what the extension says to the model — flagged rather than folded in silently. No schema, no semantics, and no user-visible behaviour changed.
 
 #### Task 5.2: Add a harness test for `permission-gate` (T4)
 
