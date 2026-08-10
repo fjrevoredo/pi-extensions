@@ -1,41 +1,14 @@
 import type { Dirent } from "node:fs";
 import { open, readdir, realpath, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
+import { bounded, boundedOutput, MAX_OUTPUT_BYTES, OUTPUT_TRUNCATION_NOTICE } from "./outbound-text.ts";
 import type { PathPolicy } from "./path-policy.ts";
 import { displayPath, resolveAllowedPath } from "./path-policy.ts";
 
-const MAX_BYTES = 50 * 1024;
-const MAX_LINES = 2_000;
 const MAX_ENTRIES = 200;
 const MAX_DEPTH = 6;
 const EXCLUDED = new Set([".git", "node_modules", "dist", "build", "coverage", ".cache"]);
 const IMAGE_EXTENSIONS = new Set([".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".tif", ".tiff", ".webp"]);
-
-export function redactKnownSecrets(text: string): string {
-	return text
-		.replace(/(?:sk|pk|api)[-_][A-Za-z0-9_-]{16,}/g, "[REDACTED_SECRET]")
-		.replace(/((?:api[_-]?key|token|password|secret)\s*[:=]\s*)[^\s'"`]+/gi, "$1[REDACTED_SECRET]");
-}
-
-function bounded(text: string, redact: boolean): { text: string; truncated: boolean } {
-	let result = text;
-	let truncated = false;
-	if (Buffer.byteLength(result) > MAX_BYTES) {
-		result = Buffer.from(result).subarray(0, MAX_BYTES).toString("utf8");
-		truncated = true;
-	}
-	const lines = result.split("\n");
-	if (lines.length > MAX_LINES) {
-		result = lines.slice(0, MAX_LINES).join("\n");
-		truncated = true;
-	}
-	return { text: redact ? redactKnownSecrets(result) : result, truncated };
-}
-
-function boundedOutput(text: string, redact: boolean): string {
-	const result = bounded(text, redact);
-	return result.truncated ? `${result.text}\n[Output truncated at ${MAX_LINES} lines or ${MAX_BYTES} bytes.]` : result.text;
-}
 
 async function readBounded(path: string, signal?: AbortSignal): Promise<string> {
 	signal?.throwIfAborted();
@@ -44,7 +17,7 @@ async function readBounded(path: string, signal?: AbortSignal): Promise<string> 
 	if (IMAGE_EXTENSIONS.has(extname(path).toLowerCase())) throw new Error("Images are not available to the advisor.");
 	const handle = await open(path, "r");
 	try {
-		const buffer = Buffer.alloc(Math.min(info.size, MAX_BYTES + 1));
+		const buffer = Buffer.alloc(Math.min(info.size, MAX_OUTPUT_BYTES + 1));
 		const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
 		signal?.throwIfAborted();
 		const contents = buffer.subarray(0, bytesRead);
@@ -85,7 +58,8 @@ export async function executeRepositoryTool(
 	if (name === "read") {
 		const text = await readBounded(allowed.path, signal);
 		const result = bounded(text, policy.redactKnownSecrets);
-		return `${displayPath(policy.root, allowed.path)}${result.truncated ? " (truncated)" : ""}\n${result.text}${result.truncated ? `\n[Output truncated at ${MAX_LINES} lines or ${MAX_BYTES} bytes.]` : ""}`;
+		const header = `${displayPath(policy.root, allowed.path)}${result.truncated ? " (truncated)" : ""}`;
+		return `${header}\n${result.text}${result.truncated ? `\n${OUTPUT_TRUNCATION_NOTICE}` : ""}`;
 	}
 	if (name === "ls") {
 		const info = await stat(allowed.path);
