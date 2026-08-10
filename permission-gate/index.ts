@@ -4,11 +4,9 @@
  * Global Pi extension entrypoint for guarding dangerous `bash` tool calls.
  *
  * File layout:
- * - `permission-gate.ts` handles Pi lifecycle hooks and the interactive approval flow.
- * - `permission-gate/core.mjs` owns the rule catalogue, matching helpers, normalization,
- *   and formatting helpers shared by runtime and validation.
- * - `permission-gate/validate.mjs` is a global smoke/regression helper and is not an
- *   extension entrypoint.
+ * - `index.ts` handles Pi lifecycle hooks and the interactive approval flow.
+ * - `core.mjs` owns the rule catalogue, matching helpers, normalization, and the
+ *   formatting helpers shared with the tests.
  *
  * Scope boundary:
  * - This extension intentionally guards `bash` only.
@@ -20,7 +18,7 @@ import {
   evaluateDangerousCommand,
   formatCommandPreview,
   formatRuleSummary,
-} from "./permission-gate/core.mjs";
+} from "./core.mjs";
 
 const ALLOW_ONCE_OPTION = "Allow once";
 const ALLOW_FOR_SESSION_OPTION = "Allow for this session";

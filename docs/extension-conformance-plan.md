@@ -164,7 +164,7 @@ None.
 
 #### Task 3.2: Restructure `permission-gate` into the directory shape (L1)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: `permission-gate/index.ts` is the entrypoint.
 - Steps:
   1. `git mv permission-gate.ts permission-gate/index.ts`.
