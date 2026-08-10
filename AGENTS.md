@@ -67,13 +67,17 @@ The definition of done is standard §13. In short:
 npm run typecheck
 node --test
 npm run lint
-pi --list-models
 bash sync-extensions.sh --dry-run   # then sync
 ```
 
 …then `/reload` and a manual pass over the changed flow, which is mandatory for TUI
 extensions (`T10`). The first three commands are the pre-commit hook, so in practice only the
-last three are manual.
+last two are manual.
+
+`pi --list-models` is deliberately **not** in this list. It exits 0 against an extension that
+cannot be imported at all (§17), so it never was the load check it looked like. `node --test`
+is: the T4 harnesses call every extension's default export. Load errors that only appear in a
+real session show up at `/reload`, which is another reason that step is not optional.
 
 ## Current extensions
 

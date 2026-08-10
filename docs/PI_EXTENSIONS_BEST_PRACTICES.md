@@ -406,14 +406,15 @@ The best existing examples state what the module is *not*: *"Keep this module in
 A change to any extension is complete when all of the following pass:
 
 1. `npm run typecheck`
-2. `node --test` from the repository root — all green
+2. `node --test` from the repository root — all green. This is also the **extension-load gate**: the T4 fake-`pi` harnesses call every extension's default export, so a module that cannot be imported fails here.
 3. `npm run lint`
-4. `pi --list-models` — extensions still load
-5. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
-6. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions)
-7. README/AGENTS updated if the agent-facing or maintainer-facing contract moved
+4. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
+5. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions). Watch for load errors here specifically: pi reports them interactively, and no non-interactive pi invocation does (§17).
+6. README/AGENTS updated if the agent-facing or maintainer-facing contract moved
 
-Steps 1–3 are also run by the pre-commit hook (§14), so in practice only 4–7 are manual.
+Steps 1–3 are also run by the pre-commit hook (§14) and by CI, so in practice only 4–6 are manual.
+
+`pi --list-models` used to be step 4, on the assumption that it detects an extension that fails to load. It does not — measured in §17 — so it has been removed rather than left in place as a check that reassures without checking.
 
 ---
 
@@ -461,7 +462,9 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 | 7 | T4 | Fake-`pi` harness tests for `ask-user` and `permission-gate` | tests |
 | 8 | — | `advisor`: drop the obsolete `--experimental-strip-types` flag | tests |
 
-`validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is already covered by `pi --list-models` in §13.
+`validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is covered by the T4 fake-`pi` harnesses, which call every extension's default export under `node --test`.
+
+Half of that rationale was originally wrong and has been corrected: it said extension load was covered by `pi --list-models`, which was later measured and does not detect a broken extension at all (§17). The T4 harnesses were doing the work the whole time.
 
 `advisor` is bound by the structural rules from step 8 onward. Its style pass (F5, S1, the 734-character line, the Biome reformat) happens when the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff.
 
@@ -526,6 +529,9 @@ Every rule resting on a claim about the toolchain was measured, not assumed. Rec
 | `keyHint`/`keyText` are unused | grep across the repo | Absent; `ask-user.ts` hard-codes 4 hint strings | U5 |
 | Extensions share pi's module instance | Loaded a probe extension through pi's own jiti with its real alias map, after initialising the theme in the host | Host and extension return byte-identical `keyHint()` output — the same singleton | U5, R5 |
 | `tsc --build` is a real gate through references | Injected a parameter property, an `enum`, an extensionless import, a value-import of a type, and an incomplete options object | Caught as `TS1294`, `TS1294`, `TS2835`, `TS1484`, `TS2345` | C3 |
+| **`pi --list-models` does not detect a broken extension** | Synced into an overridden `HOME`, replaced `advisor/index.ts` with an import of a nonexistent module, ran `pi --list-models` — with and without authentication copied in | **Exit 0, empty stderr, no diagnostic, byte-identical to the control with the extension intact** | §13 |
+| `sync-extensions.sh` honours an overridden `HOME` | `HOME="$(mktemp -d)" bash sync-extensions.sh` | Populates `$HOME/.pi/agent/extensions/` correctly — which is what makes L7 mechanically checkable in CI | L7, §14 |
+| rsync matches a slash-bearing pattern against the path *tail* | GNU rsync 3.4.3 and macOS openrsync over a tree of `test/`, `ext/test/`, `ext/sub/test/` | `--exclude '*/test/'` drops both nested dirs but **not** root `test/`; `--exclude 'test/'` drops all three. Both implementations agree | L7 |
 
 The module-instance result is worth keeping in mind whenever an extension reaches for something stateful in a pi package. pi's extension loader aliases `@earendil-works/*` to its own `dist` entrypoints and calls jiti with `moduleCache: false`, which *looks* like every extension would get a private copy — in which case any module-level singleton (the theme, the keybindings manager) would be uninitialised and throw on first use. It does not: the extension resolves to the same instance the host already initialised. That is what makes `keyHint()` (U5) safe to call from an extension, and it is why R5's four supported packages can be relied on for more than pure functions. None of the 78 official examples exercise this, so it was measured rather than assumed.
 
@@ -550,7 +556,9 @@ Recorded so these are not re-litigated. Only the decisions where the alternative
 
 **Bare tool names over namespacing (N1).** Anthropic's guidance recommends namespacing (`asana_search`, `jira_search`), but it targets disambiguation among many similar tools; there are a handful of distinct ones here. pi warns in interactive mode when an extension shadows a built-in, so a collision is loud rather than silent, and renaming later would orphan the tool calls stored in existing sessions. Prefixing was rejected as solving a detectable problem at a permanent cost to prompt readability.
 
-**`validate.mjs` retired with no replacement (§15 step 5).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by `pi --list-models` in §13.
+**`validate.mjs` retired with no replacement (§15 step 5).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by the T4 fake-`pi` harnesses.
+
+The second half of that claim originally read "extension load by `pi --list-models` in §13", and was wrong: `pi --list-models` exits 0 against a deliberately broken extension (§17). The decision to retire `validate.mjs` still stands — the T4 harnesses are a strictly stronger load gate than either — but it stood on one correct reason, not two.
 
 **MUST assigned by enforceability, not importance (§"How to read the rules").** An earlier draft made 76% of rules MUST with zero MAY. Recalibrated so MUST means "the hook checks it, or breaking it fails at runtime". The visible cost is that `S1` — the principle this whole document derives from — is a SHOULD. That is stated openly rather than papered over, because a MUST nothing verifies devalues the ones that are real. `A1` and `A8` are MUST despite looking stylistic: `Type.Union` is a genuine runtime failure on Google's API, and non-sequential tools race.
 

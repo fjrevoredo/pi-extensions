@@ -50,11 +50,12 @@ git config core.hooksPath .githooks   # once per clone; runs the checks below be
 
 ```bash
 npm run typecheck              # tsc --build across all four extensions
-node --test                    # the whole suite, from the repository root
+node --test                    # the whole suite, and the extension-load gate
 npm run lint                   # biome check .
-pi --list-models               # confirms extensions still load
 bash sync-extensions.sh --dry-run   # review, then run it without --dry-run
 ```
+
+`node --test` is what confirms extensions still load: the fake-`pi` harness tests call every extension's default export, so a module that cannot be imported fails there. `pi --list-models` was previously listed here for that purpose and does not do it — it exits 0 against a deliberately broken extension.
 
 Then `/reload` inside pi and run a focused manual check of whatever changed.
 
