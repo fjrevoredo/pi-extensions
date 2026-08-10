@@ -3,7 +3,8 @@ import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createPathPolicy, resolveAllowedPath } from "../path-policy.ts";
+import { resolveAllowedPath } from "../path-access.ts";
+import { createPathPolicy } from "../path-policy.ts";
 import { executeRepositoryTool } from "../repository-tools.ts";
 
 // Injected rather than read from pi, so these tests no longer depend on ~/.pi (T7).

@@ -3,7 +3,8 @@ import { open, readdir, realpath, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { bounded, boundedOutput, MAX_OUTPUT_BYTES, OUTPUT_TRUNCATION_NOTICE } from "./outbound-text.ts";
 import type { PathPolicy } from "./path-policy.ts";
-import { displayPath, resolveAllowedPath } from "./path-policy.ts";
+import { resolveAllowedPath } from "./path-access.ts";
+import { displayPath } from "./path-policy.ts";
 
 const MAX_ENTRIES = 200;
 const MAX_DEPTH = 6;

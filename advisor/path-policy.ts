@@ -1,42 +1,31 @@
-import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
-const DEFAULT_PROTECTED = [
-	".git", ".env", ".ssh", ".gnupg", ".aws", ".azure", ".kube", "auth.json", "credentials.json", ".npmrc",
+export const DEFAULT_PROTECTED = [
+	".git",
+	".env",
+	".ssh",
+	".gnupg",
+	".aws",
+	".azure",
+	".kube",
+	"auth.json",
+	"credentials.json",
+	".npmrc",
 ];
-const PROTECTED_SUFFIXES = [".pem", ".key", ".p12", ".pfx", ".jks"];
+export const PROTECTED_SUFFIXES = [".pem", ".key", ".p12", ".pfx", ".jks"];
+
+/**
+ * The exact strings the advisor sees. They are part of the tool contract it
+ * reads, so they are constants rather than literals at three call sites (T6).
+ */
+export const OUTSIDE_ROOT_ERROR = "Path is outside the advisor root.";
+export const PROTECTED_OR_OUTSIDE_ERROR = "Path is protected or outside the advisor root.";
+export const INACCESSIBLE_ERROR = "Path cannot be accessed.";
 
 export interface PathPolicy {
 	root: string;
 	additionalProtectedPaths: string[];
 	redactKnownSecrets: boolean;
-}
-
-export function isWithin(root: string, candidate: string): boolean {
-	const path = relative(root, candidate);
-	return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
-}
-
-function isProtected(root: string, target: string, additions: string[]): boolean {
-	const rel = relative(root, target).split(sep).filter(Boolean);
-	if (rel.length === 0) return false;
-	const configured = new Set([...DEFAULT_PROTECTED, ...additions.map((value) => value.replaceAll("\\", "/").split("/")[0])]);
-	return rel.some((part) => part === ".env" || part.startsWith(".env.") || configured.has(part) || PROTECTED_SUFFIXES.some((suffix) => part.toLowerCase().endsWith(suffix)));
-}
-
-export async function resolveAllowedPath(policy: PathPolicy, requested: string): Promise<{ path?: string; error?: string }> {
-	if (!requested || typeof requested !== "string" || isAbsolute(requested)) return { error: "Path is outside the advisor root." };
-	const root = await realpath(policy.root).catch(() => resolve(policy.root));
-	const candidate = resolve(root, requested);
-	if (!isWithin(root, candidate) || isProtected(root, candidate, policy.additionalProtectedPaths)) return { error: "Path is protected or outside the advisor root." };
-	try {
-		const canonical = await realpath(candidate);
-		if (!isWithin(root, canonical) || isProtected(root, canonical, policy.additionalProtectedPaths)) return { error: "Path is protected or outside the advisor root." };
-		return { path: canonical };
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { path: candidate };
-		return { error: "Path cannot be accessed." };
-	}
 }
 
 export interface PathPolicyOptions {
@@ -45,6 +34,39 @@ export interface PathPolicyOptions {
 	agentDirectory: string;
 	additionalProtectedPaths: string[];
 	redactKnownSecrets?: boolean;
+}
+
+export function isWithin(root: string, candidate: string): boolean {
+	const path = relative(root, candidate);
+	return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
+}
+
+export function isProtected(root: string, target: string, additions: string[]): boolean {
+	const rel = relative(root, target).split(sep).filter(Boolean);
+	if (rel.length === 0) return false;
+	const configured = new Set([
+		...DEFAULT_PROTECTED,
+		...additions.map((value) => value.replaceAll("\\", "/").split("/")[0]),
+	]);
+	return rel.some(
+		(part) =>
+			part === ".env" ||
+			part.startsWith(".env.") ||
+			configured.has(part) ||
+			PROTECTED_SUFFIXES.some((suffix) => part.toLowerCase().endsWith(suffix)),
+	);
+}
+
+/**
+ * The whole admission decision, as a value. Both the pre- and post-canonical
+ * checks in `resolveAllowedPath` are this same question asked twice, which is
+ * why it is one function rather than an inlined pair of conditions.
+ */
+export function admits(policy: PathPolicy, root: string, candidate: string): { ok: true } | { ok: false; error: string } {
+	if (!isWithin(root, candidate) || isProtected(root, candidate, policy.additionalProtectedPaths)) {
+		return { ok: false, error: PROTECTED_OR_OUTSIDE_ERROR };
+	}
+	return { ok: true };
 }
 
 export function createPathPolicy(options: PathPolicyOptions): PathPolicy {
