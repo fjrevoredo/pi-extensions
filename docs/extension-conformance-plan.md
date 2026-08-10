@@ -232,7 +232,7 @@ None.
 
 ### Milestone 5: Entrypoint Test Coverage
 
-- Status: IN PROGRESS
+- Status: COMPLETED
 - Purpose: Extend the fake-`pi` harness pattern — currently proven only in `context-footer` — to the two extensions with the most behaviour and the least coverage.
 - Exit Criteria: Each of `ask-user` and `permission-gate` has a `test/index.test.ts` that drives its real entrypoint with no TUI and no pi runtime, and the root suite still passes.
 
@@ -253,7 +253,7 @@ None.
 
 #### Task 5.2: Add a harness test for `permission-gate` (T4)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: The gate's allow/block decisions and approval caching are covered, not just its rule matching.
 - Steps:
   1. Create `permission-gate/test/index.test.ts` with a fake `pi` exposing `on(event, handler)` that records handlers by event name and a `sendUserMessage` spy, plus a fake `ctx` with a settable `hasUI` and a scriptable `ui.select` that returns a queued choice and counts its calls. Call the default export, then drive the recorded `tool_call` handler directly.
@@ -265,6 +265,7 @@ None.
   7. Assert the recorded `session_shutdown` handler clears the cache: approve for the session, invoke `session_shutdown`, then confirm the same command prompts again.
 - Validation: `node --test` from `permission-gate/` passes and the new file contributes at least 7 tests; deliberately widening the approval key to the rule id alone makes the step-5 test fail, and dropping the `session_shutdown` handler makes the step-7 test fail.
 - Notes: This is the highest-value new coverage in the plan — the only safety-critical decision path with no automated test today. `test/core.test.ts` from Task 3.3 covers rule *matching*; this file covers the *decisions* built on top of it. Keep them separate.
+- Result: 10 tests, all passing. Both prescribed mutation checks fail, each caught by exactly the intended test: widening the approval key to the rule id alone fails only "keeps the session approval key narrower than the matched rule"; removing the `session_shutdown` handler fails only "clears cached approvals on session shutdown". No defects found — the gate behaved correctly on every path.
 
 ### Milestone 6: Deferred Quality Items
 
