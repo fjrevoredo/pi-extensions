@@ -4,8 +4,12 @@
 #
 # Runs the mechanical checks from docs/PI_EXTENSIONS_BEST_PRACTICES.md section 13.
 # Use `git commit --no-verify` for a deliberate WIP commit.
+#
+# This hook defines no command of its own. It calls the npm scripts, and so does
+# .github/workflows/ci.yml, so the two cannot drift apart — there is nothing in
+# either file to drift. check-hook-parity.sh asserts that they stay call sites.
 set -euo pipefail
 
 npm run typecheck
-node --test
-npx biome check .
+npm test
+npm run lint
