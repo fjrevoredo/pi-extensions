@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import contextFooterExtension from "../index";
+import contextFooterExtension from "../index.ts";
 
 type Handler = (event: any, ctx?: any) => unknown;
 

@@ -14,7 +14,7 @@ import {
 	fitsWidth,
 	type ContextTone,
 	type GitSummary,
-} from "./format";
+} from "./format.ts";
 
 type AgentPhase = "ready" | "thinking" | "running";
 

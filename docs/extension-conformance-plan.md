@@ -71,7 +71,7 @@ None.
 
 ### Milestone 1: Toolchain Foundation
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Purpose: Establish a single pinned pi version and a working typecheck before touching any source. Nothing downstream can be verified until `npm run typecheck` exists.
 - Exit Criteria: `npm run typecheck` and `npm run test` both run from the repository root; exactly one `package.json` exists and it declares `"type": "module"`; every extension resolves `@earendil-works/*` at exactly `0.84.1`; `sync-extensions.sh --dry-run` shows no new files destined for the runtime directory.
 
@@ -110,13 +110,13 @@ None.
 
 ### Milestone 2: Make The Suite Green
 
-- Status: TO BE DONE
+- Status: IN PROGRESS
 - Purpose: Remove the two latent defects that keep the repository from having a single working test command.
 - Exit Criteria: `node --test` at the repository root passes with zero failures; no extension depends on `tsx`; `npm run typecheck` is clean.
 
 #### Task 2.1: Add explicit `.ts` extensions and drop `tsx` (R3, T1)
 
-- Status: TO BE DONE
+- Status: COMPLETED
 - Objective: Every relative import resolves under Node's ESM resolver, so `node --test` needs no runner dependency.
 - Steps:
   1. In `context-footer/index.ts`, change `from "./format"` to `from "./format.ts"`.

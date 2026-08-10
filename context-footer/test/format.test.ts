@@ -10,7 +10,7 @@ import {
 	joinFooterSegments,
 	parseGitStatus,
 	truncateSegment,
-} from "../format";
+} from "../format.ts";
 
 test("uses hard token thresholds instead of context-window percentages", () => {
 	assert.equal(getContextTone({ tokens: 0, contextWindow: 1_000_000, percent: 0 }), "success");
