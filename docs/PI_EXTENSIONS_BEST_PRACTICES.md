@@ -1,0 +1,538 @@
+# pi Extension Best Practices
+
+**Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §17 through §20. There is no companion document.
+
+**Scope:** every extension in this repository — `ask-user`, `permission-gate`, `context-footer`, and `advisor` (structural rules apply now, style rules on promotion; see §15).
+
+## How to read the rules
+
+| Word | Meaning |
+|---|---|
+| **MUST** | Either mechanically checked by the pre-commit hook (§14), or breaking it causes a runtime or safety failure. A violation is a defect. |
+| **SHOULD** | The default, resolved by judgement in review. Deviating requires a one-line comment in the code saying why. |
+| **MAY** | Explicitly your call; no justification needed either way. |
+
+Strength is assigned by **enforceability**, not by importance. Some of the most important rules here are SHOULD — `S1` in particular — because nothing can verify them automatically. A MUST that nothing checks is just a SHOULD that devalues the real MUSTs.
+
+Of 86 rules: **31 MUST, 54 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
+
+---
+
+## 1. Repository and file layout (`L`)
+
+**L1 — MUST: one directory per extension, entrypoint at `<name>/index.ts`.**
+pi auto-discovers exactly two shapes: `~/.pi/agent/extensions/*.ts` and `~/.pi/agent/extensions/*/index.ts`. Use the directory shape for everything except a genuinely single-file extension. The split shape (`foo.ts` beside a `foo/` helper directory) is not allowed — it puts the entrypoint outside the unit it belongs to, and the day anyone adds `foo/index.ts` pi discovers both and registers the extension twice.
+
+```
+context-footer/          ← the extension is the directory
+  index.ts               ← entrypoint: exports default (pi: ExtensionAPI) => void
+  format.ts              ← pure helpers
+  test/
+    format.test.ts
+    index.test.ts
+  tsconfig.json          ← extends ../tsconfig.base.json
+  README.md
+```
+
+**L2 — MAY: keep a genuinely single-file extension as `<name>.ts` at the repository root**, with no sibling directory. The moment it needs a second module it becomes a directory (L1).
+
+**L3 — SHOULD: the entrypoint contains wiring only.**
+`index.ts` registers tools/commands/hooks, owns lifecycle subscriptions, and delegates. Policy, parsing, formatting, and validation live in sibling modules. A reviewer should be able to read `index.ts` top to bottom and see *what the extension does to pi* without reading any logic.
+
+**L4 — SHOULD: one responsibility per module, named after that responsibility.**
+`validation.ts`, `format.ts`, `option-layout.ts`, `path-policy.ts` are good. `utils.ts`, `helpers.ts`, `common.ts` are not — they attract unrelated code and destroy the test boundary.
+
+**L5 — SHOULD: file names are `kebab-case`; tests are `<module>.test.ts` and live in `<extension>/test/`.**
+
+**L6 — SHOULD: every extension has a `README.md`** covering purpose, agent-facing contract, runtime limitations (e.g. TUI-only), and how to test it.
+
+**L7 — MUST: nothing reaches the runtime directory except what pi loads.**
+Test files, `tsconfig.json`, the root `package.json`, lockfiles, and docs must be excluded by `sync-extensions.sh`. When you add a new kind of non-runtime file, update the sync exclusions in the same commit. Anchor root-only exclusions with a leading slash (`/package.json`) so a future extension that genuinely needs its own runtime `package.json` can still carry one.
+
+---
+
+## 2. Language, runtime, and syntax (`R`)
+
+**R1 — MUST: TypeScript (`.ts`) for all extension code.**
+No `.mjs` with JSDoc typedefs. pi loads extensions through [jiti](https://github.com/unjs/jiti), so TypeScript needs no build step, and JSDoc types are strictly weaker: they are checked by nothing unless a `tsconfig.json` covers the file, and they cannot express the discriminated unions this codebase relies on.
+
+**R2 — MUST: erasable syntax only.**
+No parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`. This matches upstream pi-mono's own rule and is a hard requirement for Node's native type stripping, which is strip-only:
+
+```
+$ node -e "import('./ask-user/multiline-select-list.ts')"
+FAIL: TypeScript parameter property is not supported in strip-only mode
+```
+
+jiti *transforms* rather than strips, so parameter properties run fine in pi — but they make the module permanently untestable under `node --test`. Write the assignment out:
+
+```ts
+// Not allowed
+constructor(private readonly items: Item[]) {}
+
+// Required
+private readonly items: Item[];
+constructor(items: Item[]) {
+	this.items = items;
+}
+```
+
+Mechanically enforced by `erasableSyntaxOnly` (C3), which reports `TS1294`.
+
+**R3 — MUST: relative imports carry the explicit `.ts` extension.**
+`import { normalizeQuestions } from "./validation.ts"` — not `"./validation"`. jiti and `tsx` both resolve extensionless specifiers, but Node's ESM resolver does not:
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../context-footer/format'
+```
+
+Mechanically enforced by `moduleResolution: "NodeNext"` (C3), which reports `TS2835`.
+
+**R4 — MUST: top-level imports only.** No `await import()`, no `import("pkg").Type`. (Upstream pi-mono rule; lint-enforced.)
+
+**R5 — MUST: import only from the four supported packages plus `node:*` built-ins.**
+`@earendil-works/pi-coding-agent`, `typebox`, `@earendil-works/pi-ai`, `@earendil-works/pi-tui`. Anything else is a real npm dependency: it must be declared in `dependencies` (not `devDependencies`), it needs its `node_modules/` present at runtime, and `sync-extensions.sh` currently excludes `node_modules/`. Adding a runtime dependency therefore requires changing the sync script in the same commit.
+
+**R6 — MUST NOT use `any` in extension code**, except as a narrow cast on a single line at a genuinely untyped pi boundary. Test harnesses **MAY** use `any` freely for fakes — `context-footer/test/index.test.ts` is the intended shape.
+
+**R7 — MUST: type-only imports use `import type`.** Enforced by `verbatimModuleSyntax` (C3).
+
+---
+
+## 3. Separation of concerns and testability (`S`)
+
+This section is the principle the rest of the document derives from. It is SHOULD throughout only because no tool can verify it.
+
+**S1 — SHOULD: pure core, imperative shell.**
+Every extension splits into a *core* that is pure (no `pi`, no `ctx`, no TUI, no clock, no filesystem, no network) and a *shell* that does the effects. All decisions — validation, normalization, policy matching, layout arithmetic, text formatting, threshold logic — belong in the core. This is what makes `validation.ts`, `option-layout.ts`, `format.ts`, and the permission-gate rule catalogue testable today; the rule generalises the existing practice.
+
+**S2 — SHOULD: core modules never import from `@earendil-works/*`.**
+The one reasonable exception is a pure measurement utility with no side effects (`visibleWidth`, `truncateToWidth`). Better still, inject it: `option-layout.ts` already does this through its `TextMetrics` interface, which is why it is testable with no pi packages present at all.
+
+**S3 — SHOULD: UI components stay humble.**
+A `Component` / wizard / footer renderer may hold interaction state and translate events into calls on the core. It must not decide *what the answer is*. Concretely: `AskUserWizard.buildDisplayOptions()` and `getFooterHint()` are formatting decisions that belong in a core module; `handleInput()` dispatching to a state machine is legitimately in the component.
+
+**S4 — SHOULD: express the core as data in / data out.**
+Prefer functions that take a value and return a value over methods that mutate instance state. `normalizeQuestions(params) → { questions } | { error }` is the model: total, deterministic, trivially testable.
+
+**S5 — SHOULD: return errors as values in the core; throw only at the shell boundary.**
+Core functions return a discriminated result. The shell decides whether that becomes a tool error, a blocked call, or a rendered message. Do not let a core module decide the user-facing consequence of its own failure.
+
+**S6 — SHOULD: inject non-determinism.**
+Clocks, randomness, `process.env`, and `cwd` are parameters with defaults, not free variables. `formatCwd(cwd, home = process.env.HOME)` is the pattern.
+
+---
+
+## 4. Naming (`N`)
+
+**N1 — SHOULD: tool names are `snake_case`** (`ask_user`, `consult_advisor`) and read as verb-object. Names stay **unprefixed** — with a handful of distinct tools there is no ambiguity for the model to resolve, and pi warns in interactive mode when an extension shadows a built-in, so a collision is loud rather than silent. Renaming a tool orphans the tool calls stored in existing sessions, so treat the name as a one-way door and check for new built-in collisions whenever pi is upgraded (C2).
+
+**N2 — SHOULD: tool `label` is Title Case** (`Ask User`), used for TUI display only.
+**N3 — SHOULD: command names are lowercase, no leading slash.**
+**N4 — SHOULD: exported types are `PascalCase`; functions and variables `camelCase`; module-level constants `SCREAMING_SNAKE_CASE`.**
+**N5 — SHOULD: reserved/sentinel values are visibly reserved and exported from one place** — `SOMETHING_ELSE_VALUE = "__something_else__"` is the pattern, and validation must reject user input that collides with it.
+**N6 — SHOULD: names in the agent-facing schema state their own semantics.** Prefer `recommendedOptionValue` over `recommended`, `freeTextPlaceholder` over `placeholder`. Anthropic's tool-writing guidance is explicit that unambiguous parameter names materially improve model accuracy.
+**N7 — SHOULD: rule/policy identifiers are stable, namespaced, kebab-case strings** (`filesystem-rm-recursive`, `git-force-push`). They appear in user-facing messages and are grep targets — treat them as API.
+
+---
+
+## 5. Function signatures and module API (`F`)
+
+**F1 — SHOULD: name the default export** — `export default function askUser(pi: ExtensionAPI)` rather than an anonymous function. Stack traces and debug logs get much better.
+**F2 — SHOULD: export only what is used outside the module**, and use inline `export` consistently rather than a trailing `export { … }` block.
+**F3 — SHOULD: at most three positional parameters; beyond that take a single options object.**
+`AskUserWizard`'s seven-parameter constructor is the counter-example: `(tui, theme, keybindings, done, title, intro, questions)` cannot be called correctly without checking the definition. Prefer `constructor(deps: WizardDeps)`.
+**F4 — SHOULD: functions that can fail return a discriminated union**, not `undefined`-means-error. `{ option } | { error }` beats `Option | undefined`.
+**F5 — SHOULD: keep functions under ~40 lines and one level of abstraction.**
+`context-footer`'s `render()` mixes segment construction with a triple-nested responsive-fallback search; that search is a pure function over candidate segment lists and belongs in `format.ts`.
+**F6 — SHOULD: no exported function mutates its arguments.**
+
+---
+
+## 6. Agent-facing contract (`A`)
+
+The tool schema and prompt text are the extension's real public API — the model is the caller. Treat schema changes like breaking API changes.
+
+**A1 — MUST: use `StringEnum` from `@earendil-works/pi-ai` for string enums.** `Type.Union`/`Type.Literal` is incompatible with Google's API — this is a runtime failure on some providers, not a style preference.
+
+**A2 — SHOULD: every schema field carries a `description`**, written as if onboarding a new teammate: the semantics, the constraint, and the failure mode.
+
+**A3 — SHOULD: make invalid states unrepresentable in the schema.**
+Use discriminated unions with `additionalProperties: false` per branch rather than optional fields that are conditionally required. `AskUserOptionSchema`'s select/freeText split is the reference implementation.
+
+**A4 — SHOULD: every `promptGuidelines` bullet names its own tool.**
+Bullets are appended flat into the shared `Guidelines` section with no grouping, so "Use this tool when…" is unresolvable. Write "Use `ask_user` when…".
+
+**A5 — MUST: validation failures the model can fix are returned as normal tool results, not thrown.**
+Throwing sets `isError: true` and is reserved for genuine execution failures. The result text must state what was wrong *and* show the correct shape — `optionShapeError()`, which prints the offending field, the reason, and both valid option shapes, is the standard.
+
+**A6 — SHOULD: prompt text tells the model what *not* to retry.**
+*"If ask_user returns a validation error, correct the reported option shape and do not retry the unchanged invalid payload."* Keep this class of guardrail on every validating tool.
+
+**A7 — SHOULD: return high-signal, human-readable results.**
+Summarize in `content` what the model needs to act on; put machine-readable structure in `details`. Avoid raw identifiers where a label exists.
+
+**A8 — MUST: use `executionMode: "sequential"` for any tool that blocks on the user or mutates shared state.** Tool calls run in parallel by default; without this you get races.
+
+**A9 — MUST: check `ctx.mode === "tui"` before TUI-only features and `ctx.hasUI` before dialogs/notifications**, and return a clear, actionable result in the unsupported mode (`"Error: ask_user requires TUI mode"`).
+
+**A10 — SHOULD: prefer one high-leverage tool over several thin ones.** Batching related questions into a single `ask_user` call is the correct instinct and belongs in `promptGuidelines`.
+
+**A11 — SHOULD: when the agent-facing contract changes, update in the same commit** the schema descriptions, `promptSnippet`, `promptGuidelines`, the extension `README.md`, and the root `README.md` if the contract is user-visible.
+
+---
+
+## 7. State and lifecycle (`E`)
+
+**E1 — MUST NOT start background resources in the extension factory.**
+No timers, watchers, sockets, or child processes at module or factory scope — factories run in invocations that never open a session (`pi --list-models`). Start them in `session_start` or on first use.
+
+**E2 — MUST: register an idempotent `session_shutdown` handler that releases everything `session_start` acquired.**
+
+**E3 — MUST: guard async work against session replacement.**
+Keep a monotonically increasing generation counter, capture it when the async work starts, and drop the result if it no longer matches. `context-footer`'s `sessionGeneration !== generation` checks are the reference pattern; without them a slow `git status` from a torn-down session writes into the live one.
+
+**E4 — SHOULD: keep in-memory session state genuinely session-scoped.**
+`permission-gate`'s `sessionApprovals` set is correct: cleared on shutdown, keyed narrowly so one approval can never widen into a category-level bypass.
+
+**E5 — SHOULD: persist state that must survive fork/resume in tool-result `details` or a custom entry, and reconstruct it in `session_start`.** In-memory-only state should be documented as intentionally ephemeral.
+
+**E6 — SHOULD NOT reuse captured `pi`, `ctx`, or `sessionManager` objects across a session replacement.** Use only the `ctx` handed to the new callback.
+
+**E7 — SHOULD: coalesce, not queue, redundant refreshes.** The in-flight/pending flag pair in `context-footer`'s `refresh()` is the pattern.
+
+---
+
+## 8. Safety and blast radius (`P`)
+
+Every rule here is MUST: these are the extensions that can cause harm.
+
+**P1 — MUST: state the security posture in the file header.**
+`permission-gate` gets this right: *"It is a guardrail, not a security boundary or shell parser."* Any extension that gates, filters, or sandboxes must make the same claim explicitly. This is not defensive phrasing — pi's own `docs/security.md` states that pi "does not include a built-in sandbox" and that "extensions are TypeScript modules that run with the same permissions" as the user. An in-process gate cannot be anything but a guardrail.
+
+**P2 — MUST: fail closed without a UI.** If a gating extension cannot prompt (`!ctx.hasUI`), it blocks and says why.
+
+**P3 — MUST: keep policy data ordered, commented, and in one module.**
+First-match-wins ordering is behaviour, not formatting. Document the ordering policy at the top of the catalogue (broad markers like `sudo` last, so they don't mask the more useful specific reason) and record deliberate non-coverage next to the rule.
+
+**P4 — MUST: every policy rule has at least one positive and one negative test case.** The negative cases are what prevent false-positive creep — `echo "DELETE FROM users"` → no match, `chmod 1777` → no match.
+
+**P5 — MUST: narrow approval/caching keys.** Bind to the specific normalized input *and* the matched rule, never to a category.
+
+**P6 — MUST: normalize before matching and before keying**, using the same normalizer for both.
+
+---
+
+## 9. TUI and rendering (`U`)
+
+**U1 — MUST: renderers never exceed the width they are given.** pi's `docs/tui.md` marks this **Critical**. Every render path is width-bounded and tested at extreme widths (T5).
+
+**U2 — SHOULD: use `Text` with padding `(0, 0)` in `renderCall`/`renderResult`** — the default `Box` supplies padding. Use `renderShell: "self"` only when you take over framing entirely.
+
+**U3 — SHOULD: degrade responsively by dropping whole segments, then truncating** — never emit a half-rendered segment.
+
+**U4 — SHOULD: use theme semantic colors; never hard-code ANSI.** Where no semantic color fits, document the substitution at the call site (`context-footer` borrowing `mdHeading` for orange is the model).
+
+**U5 — SHOULD: derive key hints from the injected `KeybindingsManager` via `keyHint()`/`keyText()`** rather than hard-coding them. Currently unmet: `keyHint`/`keyText` appear nowhere in the repo and `ask-user.ts` hard-codes four hint strings, so a user with custom keybindings is shown wrong hints.
+
+**U6 — MUST: propagate `focused` to the active child component.** Without it IME cursor placement breaks — a real input failure, not cosmetic.
+
+**U7 — SHOULD: keep the default (collapsed) result view to one or two lines and put detail behind `expanded`.**
+
+**U8 — SHOULD: use pi's built-in components before writing your own.**
+`SelectList`, `SettingsList`, `BorderedLoader`, `Input`, and `Editor` cover most cases, and `docs/tui.md` lists "don't rebuild them" as a Key Rule. Writing a replacement is allowed when a built-in genuinely cannot express the requirement — `ask-user`'s `MultilineSelectList` exists because `SelectList` cannot wrap a label across lines while keeping one logical option per selection index — but the reason must be stated in the module header, as it is there. Also from the same Key Rules, already satisfied across the repo: take `theme` from the `ctx.ui.custom(...)` callback rather than importing it, explicitly type the `DynamicBorder` colour callback parameter, and call `tui.requestRender()` after every state change in `handleInput`.
+
+---
+
+## 10. Testing (`T`)
+
+**T1 — MUST: `node --test` is the only test command.**
+No `tsx`, no `vitest`, no bespoke runners. Verified on Node 24: bare `node --test` discovers `**/*.test.ts` and strips types with no flag; a *directory argument* does not work (`node --test test/` fails to resolve); `--experimental-strip-types` is obsolete.
+
+**T2 — MUST: `node --test` at the repository root passes.**
+This is the whole-repo gate. Across the three production extensions it currently reports **16 passing / 2 failing out of 18**, and both failures are R3 violations rather than real defects. (The root run also picks up `advisor/`, whose count moves while that extension is in flight.) Once green, keep it green.
+
+**T3 — SHOULD: cover all core-module decision logic.**
+Validation, policy matching, layout arithmetic, threshold logic, and formatting each get direct tests. Coverage of the shell is not expected.
+
+**T4 — SHOULD: test the entrypoint through a fake-`pi` harness.**
+`context-footer/test/index.test.ts` is the reference: build a minimal object implementing the `ExtensionAPI` surface actually used, call the default export, capture the registered handlers and the footer factory, then drive lifecycle events and assert on rendered output. It proves an entrypoint can be tested with no TUI and no pi runtime. For `ask-user` that means asserting on the registered schema, `promptGuidelines`, and `renderResult` output; for `permission-gate`, the `tool_call` handler's block/allow decisions and its session-approval caching.
+
+**T5 — SHOULD: use property-style tests for width- or size-bounded renderers.** Loop over a range of widths (`1, 20, 40, 60, 80, 120`) and assert the invariant, rather than asserting one golden string.
+
+**T6 — SHOULD: assert on error *messages*, not just on failure.**
+`assert.match(error, /freeTextMode must be "input" or "editor"/)` — for an agent-facing tool the message *is* the contract (A5).
+
+**T7 — SHOULD: keep tests hermetic.** No network, no git, no real filesystem writes, no `~`. Inject fakes.
+
+**T8 — SHOULD: use table-driven tests for rule catalogues**, each row `{ input, expectedRuleId }`, including `null` expectations (P4).
+
+**T9 — MUST: `npm run typecheck` passes, and every extension file is covered by a `tsconfig.json`.**
+Today the `ask-user` and `permission-gate` trees — 2,211 lines, including the most intricate code in the repo — are covered by no `tsconfig.json` at all and are never typechecked. `context-footer` is the only extension that is.
+
+**T10 — SHOULD: verify interactive flows manually in pi** after `sync-extensions.sh` + `/reload`. Automated tests do not replace this for TUI extensions; they reduce how often it has to be exhaustive.
+
+---
+
+## 11. Tooling and configuration (`C`)
+
+The repository is a **single root workspace**. Every dependency here is dev-only — types and TypeScript — so there is nothing to install per extension. The official per-extension `package.json` pattern exists for extensions with *runtime* dependencies; adopting it here would only reintroduce the version drift it cannot prevent.
+
+**C1 — MUST: exactly one `package.json`, at the repository root.**
+
+```json
+{
+  "name": "pi-extensions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --build",
+    "format": "biome format --write .",
+    "lint": "biome check ."
+  }
+}
+```
+
+One `npm install`, one dependency set, one place to bump on a pi upgrade. An extension that genuinely needs a runtime dependency **MAY** carry its own `package.json` with that dependency in `dependencies` — and then L7 and R5 both apply.
+
+**C2 — MUST: all `@earendil-works/*` packages are pinned to the exact version of the installed `pi` runtime.**
+The installed runtime is **`pi 0.84.1`**. `advisor` matches it; `context-footer` pins `0.80.10` and must be bumped, so it is currently typechecked against a runtime it does not execute on. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
+
+**C3 — MUST: each extension has a `tsconfig.json` extending the root `tsconfig.base.json`.**
+
+```json
+// tsconfig.base.json (root)
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  }
+}
+```
+
+```json
+// <extension>/tsconfig.json
+{
+  "extends": "../tsconfig.base.json",
+  "include": ["*.ts", "test/*.ts"]
+}
+```
+
+`erasableSyntaxOnly` enforces R2 (`TS1294`); `moduleResolution: NodeNext` enforces R3 (`TS2835`); `verbatimModuleSyntax` enforces R7; `allowImportingTsExtensions` permits R3's explicit extensions. Per-extension configs keep each extension independently checkable.
+
+This baseline was run against `context-footer` before being adopted: it reports exactly three errors, all of them the R3 violations, and nothing else. With the R3 fix applied it typechecks clean and `node --test` runs all 10 tests with no flags and no `tsx`.
+
+**C4 — MUST: formatting matches upstream pi-mono, enforced by a checked-in Biome config.**
+
+```json
+// biome.json (root)
+{
+  "formatter": { "indentStyle": "tab", "indentWidth": 3, "lineWidth": 120 },
+  "linter": { "rules": { "recommended": true } }
+}
+```
+
+Tabs, indent width 3, line width 120 — identical to upstream, so code moves between repos without reformat noise. The TypeScript files already use tabs; `permission-gate`'s two-space `.mjs` files are the only outlier and are being ported anyway (R1).
+
+**C5 — SHOULD: review `sync-extensions.sh --dry-run` whenever the file layout changes**, and update the exclusion list in the same commit (L7).
+
+**C6 — SHOULD: keep lockfiles and `node_modules/` out of the runtime directory** unless an extension has a true runtime dependency (R5).
+
+---
+
+## 12. Documentation and comments (`D`)
+
+**D1 — SHOULD: open every module with a header comment stating its purpose and its boundary.**
+The best existing examples state what the module is *not*: *"Keep this module independent from pi so its contract can be tested without a TUI."*
+
+**D2 — SHOULD: comment the *why*, never the *what*.** Ordering policies, deliberate scope limits, known false-positive trade-offs, and workarounds for pi behaviour all need a comment. Restating the code does not.
+
+**D3 — SHOULD: keep a realistic example tool call in a comment beside `registerTool`.** The commented `ask_user` example payload is genuinely useful to the next reader.
+
+**D4 — SHOULD: mark intentional constraints as intentional.** "This extension intentionally guards `bash` only." Without the word *intentionally*, a future agent treats the gap as a bug and widens the blast radius.
+
+**D5 — SHOULD: update the root `README.md`** when an extension is added, removed, renamed, or repurposed, and `AGENTS.md` when the working model changes.
+
+---
+
+## 13. Definition of done
+
+A change to any extension is complete when all of the following pass:
+
+1. `npm run typecheck`
+2. `node --test` from the repository root — all green
+3. `npm run lint`
+4. `pi --list-models` — extensions still load
+5. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
+6. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions)
+7. README/AGENTS updated if the agent-facing or maintainer-facing contract moved
+
+Steps 1–3 are also run by the pre-commit hook (§14), so in practice only 4–7 are manual.
+
+---
+
+## 14. Enforcement
+
+A tracked pre-commit hook runs the mechanical checks. Tracked, not `.git/hooks/`, so it is version-controlled and applies to every clone:
+
+```bash
+# .githooks/pre-commit  — enable once with:
+#   git config core.hooksPath .githooks
+#!/usr/bin/env bash
+set -euo pipefail
+npm run typecheck
+node --test
+npx biome check .
+```
+
+Measured wall-clock on this repo: ~3 seconds. The reason this exists rather than relying on the §13 checklist is that agents are the main contributors here, and a checklist in a document is advisory to them while a hook is not. This repository drifted three separate ways (two pi versions, two indent styles, three test conventions) under a human-protocol regime.
+
+`--no-verify` remains available for deliberate WIP commits.
+
+---
+
+## 15. Migration plan
+
+Ratified sequence — one concern per commit, cheapest and lowest-risk first, reformat last so no file is touched twice. Each step is independently revertible; stopping part-way leaves the repo consistent.
+
+| # | Rules | Change | Verify |
+|---|---|---|---|
+| 1 | C2 | Bump `context-footer` `0.80.10` → `0.84.1` | typecheck, tests, `/reload` (API drift across four minors) |
+| 2 | C1, C3, T9 | Root `package.json` + `tsconfig.base.json`, per-extension `tsconfig.json`, sync exclusion for `/package.json` | `npm run typecheck` exists for the first time |
+| 3 | R3, R2 | Add `.ts` to three imports, drop `tsx`, rewrite two parameter-property constructors | root `node --test` goes green |
+| 4 | L1 | `ask-user/index.ts`, `permission-gate/index.ts`, tests into `test/`, update `sync-extensions.sh` | `pi --list-models`, sync, `/reload`, exercise both extensions |
+| 5 | R1 | `core.mjs` → `core.ts`; `validate.mjs` → `test/core.test.ts` | tests, `/reload`, trigger one gated command |
+| 6 | C4 | `biome.json` + one reformat pass | `npm run lint` |
+| 7 | T4 | Fake-`pi` harness tests for `ask-user` and `permission-gate` | tests |
+| 8 | — | `advisor`: drop the obsolete `--experimental-strip-types` flag | tests |
+
+`validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is already covered by `pi --list-models` in §13.
+
+`advisor` is bound by the structural rules from step 8 onward. Its style pass (F5, S1, the 734-character line, the Biome reformat) happens when the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff.
+
+---
+
+## 16. Conformance of the current extensions
+
+Assessed against this document as of the current working tree, before the §15 migration.
+
+| Rule area | `ask-user` | `permission-gate` | `context-footer` |
+|---|---|---|---|
+| L1 directory layout | ✗ split entrypoint | ✗ split entrypoint | ✓ |
+| L5 tests under `test/` | ✗ co-located | ✗ no test dir | ✓ |
+| R1 TypeScript | ✓ | ✗ `.mjs` + JSDoc | ✓ |
+| R2 erasable syntax | ✗ parameter properties (×2 files) | ✓ | ✓ |
+| R3 explicit `.ts` imports | ✓ | n/a | ✗ extensionless |
+| S1 pure core | ✓ `validation.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` |
+| S3 humble UI | ~ display/format logic in the wizard | ✓ | ~ fallback search inside `render()` |
+| A1–A11 agent contract | ✓ reference implementation | n/a (no tool) | n/a |
+| E1–E7 lifecycle | ✓ stateless per call | ✓ | ✓ generation guard |
+| P1–P6 safety | n/a | ✓ reference implementation | n/a |
+| U5 key hints | ✗ 4 hard-coded strings | n/a (built-in dialog) | n/a |
+| T1 `node --test` | ✓ | ✗ hand-rolled `validate.mjs` | ✗ requires `tsx` |
+| T4 entrypoint harness test | ✗ | ✗ | ✓ reference implementation |
+| T9 typechecked | ✗ no `tsconfig.json` | ✗ no `tsconfig.json` | ✓ |
+| C2 pinned pi version | n/a | n/a | ✗ `0.80.10` vs runtime `0.84.1` |
+| C4 formatting | ✓ tabs | ✗ 2 spaces | ✓ tabs |
+| D1–D5 comments | ✓ | ✓ reference implementation | ✓ |
+
+No extension is a bad citizen — each is the reference implementation for at least one rule area. The gaps are almost entirely *inconsistency between three good extensions*, not defects within any of them: three module layouts, two languages, three test conventions, two indentation styles, and two pinned pi versions. Most of this document therefore propagates what one extension already does best to the other two, rather than importing outside ideas.
+
+---
+
+## 17. Verified toolchain facts
+
+Every rule resting on a claim about the toolchain was measured, not assumed. Recorded so no future agent has to re-derive them or is tempted to doubt a rule that looks like mere style. Measured on Node v24.16.0, pi 0.84.1.
+
+| Claim | How it was checked | Result | Rule |
+|---|---|---|---|
+| Native type stripping rejects parameter properties | `node -e "import('./ask-user/multiline-select-list.ts')"` | Fails: `TypeScript parameter property is not supported in strip-only mode` | R2 |
+| Node's ESM resolver rejects extensionless relative imports | `node --test context-footer/test/format.test.ts` | Fails: `ERR_MODULE_NOT_FOUND … /context-footer/format` | R3 |
+| `erasableSyntaxOnly` catches parameter properties | `tsc --erasableSyntaxOnly` on a minimal repro | `TS1294: This syntax is not allowed when 'erasableSyntaxOnly' is enabled` | C3 → R2 |
+| `moduleResolution: NodeNext` catches extensionless imports | C3 baseline against `context-footer` as-is | Exactly 3 errors, all `TS2835`, nothing else — the baseline is minimal | C3 → R3 |
+| The prescribed R3 fix works end to end | Add `.ts` to 3 imports, then C3 typecheck + bare `node --test` | Typecheck clean; 10/10 tests pass with no flags and no `tsx` | R3, T1 |
+| `--experimental-strip-types` is obsolete | `node --test ask-user/validation.test.ts ask-user/option-layout.test.ts` | 16/16 pass with no flag | T1 |
+| A bare directory argument does not work | `node --test advisor/test` | Fails to resolve; bare `node --test` and a quoted glob both work | T1 |
+| pi discovers only two extension shapes | pi `docs/extensions.md`, "Extension Locations" | `*.ts` and `*/index.ts`, per scope | L1 |
+| Installed runtime version | `pi --version` | `0.84.1` | C2 |
+| `keyHint`/`keyText` are unused | grep across the repo | Absent; `ask-user.ts` hard-codes 4 hint strings | U5 |
+
+Two rules exist *only* because of these measurements:
+
+- **R2** — `ask-user.ts` and `ask-user/multiline-select-list.ts` use constructor parameter properties. This is invisible in production because jiti transforms TypeScript, but it means those two files can never be loaded by `node --test`. That is very likely why `MultilineSelectList` has no tests while its pure sibling `option-layout.ts` has thorough ones. A testability constraint disguised as a style preference.
+- **R3** — `context-footer` needs the `tsx` dependency purely because `index.ts` imports `./format` extensionless. Five characters removes the dependency and turns the repo-root suite green. The tool choice was driven by an import-style accident.
+
+---
+
+## 18. Decisions and rejected alternatives
+
+Recorded so these are not re-litigated. Only the decisions where the alternative was genuinely plausible are listed.
+
+**Directory shape over the split shape (L1).** Keeping `foo.ts` beside `foo/` was on the table — zero churn, zero runtime risk. Rejected because it has no precedent in any of the 78 official examples and stays one `foo/index.ts` away from registering an extension twice.
+
+**TypeScript over `.mjs` + JSDoc (R1).** The `.mjs` form let `permission-gate` run under bare `node` with no tooling at all, including directly against the synced global copy — genuinely useful for a safety extension. Rejected because JSDoc typedefs in a file no `tsconfig.json` covers are checked by nothing, and a safety-critical regex catalogue is exactly what you want typechecked.
+
+**`node --test` over `tsx` and `vitest` (T1).** `tsx` tolerates extensionless imports and non-erasable syntax, so it was the permissive option; `vitest` is upstream pi-mono's own choice. Both rejected: `tsx` hides the R2/R3 constraints rather than removing them, and `vitest` is disproportionate for a repo whose tests are pure-function assertions. Zero runner dependency is the right trade here.
+
+**Root workspace over a `package.json` per extension (C1).** The official `with-deps/` pattern was the obvious default and was initially adopted, then reversed: every dependency in this repo is dev-only, and the per-extension pattern exists for extensions with *runtime* dependencies. A single root manifest makes the C2 version drift structurally impossible instead of merely discouraged. Per-extension `tsconfig.json` files are retained so each extension stays independently checkable.
+
+**Bare tool names over namespacing (N1).** Anthropic's guidance recommends namespacing (`asana_search`, `jira_search`), but it targets disambiguation among many similar tools; there are a handful of distinct ones here. pi warns in interactive mode when an extension shadows a built-in, so a collision is loud rather than silent, and renaming later would orphan the tool calls stored in existing sessions. Prefixing was rejected as solving a detectable problem at a permanent cost to prompt readability.
+
+**`validate.mjs` retired with no replacement (§15 step 5).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by `pi --list-models` in §13.
+
+**MUST assigned by enforceability, not importance (§"How to read the rules").** An earlier draft made 76% of rules MUST with zero MAY. Recalibrated so MUST means "the hook checks it, or breaking it fails at runtime". The visible cost is that `S1` — the principle this whole document derives from — is a SHOULD. That is stated openly rather than papered over, because a MUST nothing verifies devalues the ones that are real. `A1` and `A8` are MUST despite looking stylistic: `Type.Union` is a genuine runtime failure on Google's API, and non-sequential tools race.
+
+**A pre-commit hook rather than a checklist alone (§14).** The deciding argument is that agents are the main contributors to this repository, and a document is advisory to an agent while a hook is not. This repo drifted three separate ways under a human-protocol regime.
+
+---
+
+## 19. Non-goals
+
+Deliberately absent. Do not add these without a decision.
+
+- **No coverage percentage target.** T3 covers core decision logic and explicitly not the shell. A global percentage would push toward testing the wiring, which is where the T4 harness already does the useful work.
+- **No CI.** Enforcement is the local pre-commit hook (§14). These extensions have no build, no deploy, and one consumer.
+- **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs).
+- **No behaviour changes as part of conformance work.** The §15 migration moves, renames, and reformats. If a migration step wants to change what an extension does, that is a separate commit.
+
+---
+
+## 20. Sources
+
+**pi runtime, shipped with `@earendil-works/pi-coding-agent@0.84.1`** — installed locally under any extension's `node_modules/`. Authoritative in a way no third-party writing is: it is the contract the runtime implements, at the version installed.
+
+- `docs/extensions.md` — extension locations and discovery (L1), extension styles, lifecycle events and session-replacement footguns (E-series), `ExtensionAPI`, custom tools and `StringEnum`/error-signalling requirements (A-series), custom rendering best practices (U2), error handling, mode behaviour (A9)
+- `docs/tui.md` — Line Width, marked *Critical* (U1); `Focusable`/IME (U6); Key Rules (U8)
+- `docs/security.md` — no built-in sandbox; extensions run with the user's full permissions (P1)
+- `examples/extensions/` — 78 official examples. Every multi-file one (`plan-mode/`, `subagent/`, `sandbox/`, `doom-overlay/`, `with-deps/`) is a directory with `index.ts` (L1). `custom-footer.ts`, `question.ts`, `questionnaire.ts`, and the examples `README.md` ("Key Patterns") inform the U- and A-series.
+
+**Upstream project conventions**
+
+- [pi-mono `AGENTS.md`](https://github.com/earendil-works/pi-mono/blob/main/AGENTS.md) — erasable syntax only, no `any`, top-level imports only, exact dependency pins, run tests you touch (R2, R4, R6, C2)
+- [pi-mono `biome.json`](https://github.com/earendil-works/pi-mono/blob/main/biome.json) — tabs, indent width 3, line width 120 (C4)
+
+**Agent-facing tool design**
+
+- [Anthropic — *Writing effective tools for AI agents*](https://www.anthropic.com/engineering/writing-tools-for-agents) — unambiguous parameter naming (N6), consolidate into high-leverage tools (A10), high-signal returns over raw identifiers (A7), actionable errors over opaque codes (A5), namespacing trade-offs (N1)
+- [Anthropic — *Effective context engineering for AI agents*](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)
+
+**Runtime and language**
+
+- [Node.js — Modules: TypeScript (v24)](https://nodejs.org/docs/latest-v24.x/api/typescript.html) — strip-only semantics and its constraints (R2, R3)
+- [Announcing TypeScript 5.8](https://devblogs.microsoft.com/typescript/announcing-typescript-5-8/) and [`erasableSyntaxOnly`](https://www.typescriptlang.org/tsconfig/erasableSyntaxOnly.html) — the `erasableSyntaxOnly` + `verbatimModuleSyntax` pairing for exactly this runtime model (C3)
+
+**Architecture and testability**
+
+- [Gary Bernhardt — *Boundaries*](https://www.destroyallsoftware.com/talks/boundaries), *Functional Core / Imperative Shell* — "functional core: many fast unit tests; imperative shell: few integration tests" (S1)
+- [Martin Fowler — *The Humble Dialog Box*](https://martinfowler.com/articles/humble-dialog-box.html) and [Humble Object](http://xunitpatterns.com/Humble%20Object.html) — Feathers' original formulation (S3)
+
+**This repository itself** is the source for the P-series (the `permission-gate` rule catalogue), E3 (`context-footer`'s generation counter, which solves a footgun pi documents but does not solve), and T4 (`context-footer/test/index.test.ts`, which proves an entrypoint is testable with no TUI and no pi runtime).
