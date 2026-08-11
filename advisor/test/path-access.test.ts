@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createResolvedPathPolicy, resolveAllowedPath } from "../path-access.ts";
-import { INACCESSIBLE_ERROR, OUTSIDE_ROOT_ERROR, PROTECTED_OR_OUTSIDE_ERROR } from "../path-policy.ts";
+import {
+	createPathPolicy,
+	INACCESSIBLE_ERROR,
+	OUTSIDE_ROOT_ERROR,
+	PROTECTED_OR_OUTSIDE_ERROR,
+} from "../path-policy.ts";
 
 /**
  * The filesystem half of the path filter. Everything that can be decided from a
@@ -172,7 +177,7 @@ test("protects the agent directory when it sits inside a symlinked root", async 
 	});
 });
 
-test("denies everything when the root itself cannot be resolved", async () => {
+test("a root that does not exist still applies the policy, and denies nothing extra", async () => {
 	const policy = await createResolvedPathPolicy({
 		root: join(tmpdir(), "advisor-root-that-does-not-exist"),
 		agentDirectory,
@@ -186,4 +191,33 @@ test("denies everything when the root itself cannot be resolved", async () => {
 	assert.equal(result.error, undefined);
 	assert.equal(result.path, join(policy.root, "a.txt"));
 	assert.deepEqual(await resolveAllowedPath(policy, ".env"), { error: PROTECTED_OR_OUTSIDE_ERROR });
+});
+
+test("the pure constructor's canonical-root contract fails closed when it is broken", async () => {
+	// createPathPolicy only `resolve`s, so handing it a root reached through a
+	// symlink leaves policy.root disagreeing with the canonical paths realpath
+	// returns. Since A10, resolveAllowedPath trusts policy.root instead of
+	// re-deriving it, which means that misuse denies everything rather than
+	// admitting anything — the safe direction, and asserted here so it stays that
+	// way. Before A10 the same misuse was admitted, because the root was
+	// canonicalized again on every call.
+	const created = await mkdtemp(join(tmpdir(), "advisor-contract-"));
+	const canonical = await realpath(created);
+	await mkdir(join(created, "src"));
+	await writeFile(join(created, "src", "safe.txt"), "hello");
+
+	if (created !== canonical) {
+		const misused = createPathPolicy({ root: created, agentDirectory, additionalProtectedPaths: [] });
+		assert.deepEqual(
+			await resolveAllowedPath(misused, join("src", "safe.txt")),
+			{ error: PROTECTED_OR_OUTSIDE_ERROR },
+			"a non-canonical root must deny, never admit",
+		);
+	}
+
+	// Honouring the contract — either constructor — admits normally.
+	const honoured = createPathPolicy({ root: canonical, agentDirectory, additionalProtectedPaths: [] });
+	assert.ok((await resolveAllowedPath(honoured, join("src", "safe.txt"))).path);
+	const resolved = await createResolvedPathPolicy({ root: created, agentDirectory, additionalProtectedPaths: [] });
+	assert.ok((await resolveAllowedPath(resolved, join("src", "safe.txt"))).path);
 });

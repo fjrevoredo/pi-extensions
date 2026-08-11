@@ -258,7 +258,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 No `tsx`, no `vitest`, no bespoke runners. Verified on Node 24: bare `node --test` discovers `**/*.test.ts` and strips types with no flag; a *directory argument* does not work (`node --test test/` fails to resolve); `--experimental-strip-types` is obsolete.
 
 **T2 — MUST: `node --test` at the repository root passes.**
-This is the whole-repo gate. It currently reports **196 passing / 0 failing** across all four extensions. It is green; keep it green. The pre-commit hook (§14) enforces this.
+This is the whole-repo gate. It currently reports **202 passing / 0 failing** across all four extensions. It is green; keep it green. The pre-commit hook (§14) enforces this.
 
 **T3 — SHOULD: cover all core-module decision logic.**
 Validation, policy matching, layout arithmetic, threshold logic, and formatting each get direct tests. Coverage of the shell is not expected.
@@ -498,7 +498,7 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 | 6 | C4 | `biome.json` + one reformat pass | `npm run lint` |
 | 7 | T4 | Fake-`pi` harness tests for `ask-user` and `permission-gate` | tests |
 | 8 | — | `advisor`: drop the obsolete `--experimental-strip-types` flag | tests |
-| 9 | all | `advisor` promoted to full conformance: entrypoint reduced to wiring, 2 defects fixed, 5 test files → 14, Biome adopted | typecheck, tests, lint, manual pi pass |
+| 9 | all | `advisor` promoted to full conformance: entrypoint reduced to wiring, 2 defects fixed, 5 test files → 15, Biome adopted | typecheck, tests, lint, manual pi pass |
 
 `validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is covered by the T4 fake-`pi` harnesses, which call every extension's default export under `node --test`.
 
@@ -532,13 +532,13 @@ Assessed against this document as of the current working tree, **after** the §1
 | C4 formatting | ✓ | ✓ | ✓ | ✓ |
 | D1–D5 comments | ✓ | ✓ reference implementation | ✓ | ✓ |
 
-Whole-repo state: `npm run typecheck` clean, `node --test` **196 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
+Whole-repo state: `npm run typecheck` clean, `node --test` **202 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
 
 Two of `advisor`'s `P` cells need a sentence rather than a tick. **`P2` is satisfied, not violated**, despite the README describing failures as fail-open: `/advisor` refuses to configure without an interactive UI, so the provider disclosure can never be skipped; the path filter denies on every resolution error except `ENOENT`; and "fail-open" refers only to returning control to the driver. **No repository data or session context leaves the machine on any failure path** — every gate refuses before a provider is contacted at all. **`P5` is genuinely `n/a`**: `advisor` caches no approvals, so there is no approval scope to get wrong.
 
 One pre-existing limitation is recorded here because it was undocumented until the promotion: a model whose id contains a slash — Vertex's `publishers/google/…` — cannot be configured at all, because a stored model reference must match `provider/id` with exactly one slash. Widening the pattern is a behaviour change (§19) and was left alone.
 
-`advisor` no longer has deferred rows. Promoting it took sixteen commits, and the measured before and after: the entrypoint went from 158 lines mixing wiring with policy and formatting to wiring only; the extension went from 12 modules to 15; its tests went from 5 files to 14, and the repository suite from 71 passing to 196; two verified defects were fixed; and the Biome exemption was removed. Nothing in `biome.json` is excluded from linting or formatting any more.
+`advisor` no longer has deferred rows. Promoting it took sixteen commits, and the measured before and after: the entrypoint went from 158 lines mixing wiring with policy and formatting to wiring only; the extension went from 12 modules to 15; its tests went from 5 files to 15 — one per module — and the repository suite from 71 passing to 202; two verified defects were fixed; and the Biome exemption was removed. Nothing in `biome.json` is excluded from linting or formatting any more.
 
 No extension was ever a bad citizen — each is the reference implementation for at least one rule area, and the gaps this table used to record were almost entirely *inconsistency between good extensions* rather than defects within any of them. Most of this document propagated what one extension already did best to the others rather than importing outside ideas.
 
