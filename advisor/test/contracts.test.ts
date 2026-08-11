@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AdviceSchema, type Advice, formatAdvice, SYSTEM_PROMPT, validateAdvice } from "../contracts.ts";
+import { type Advice, AdviceSchema, formatAdvice, SYSTEM_PROMPT, validateAdvice } from "../contracts.ts";
 
 /**
  * The advisor-facing contract: the shape of advice, and the prompt that asks for

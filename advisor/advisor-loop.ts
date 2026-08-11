@@ -1,17 +1,11 @@
 import type { Api, AssistantMessage, Context, Model, Usage } from "@earendil-works/pi-ai";
-import type { AdvisorConfig, Advice } from "./contracts.ts";
-import { validateAdvice } from "./contracts.ts";
 import { advisorCompletionOptions } from "./advisor-options.ts";
-import type { PathPolicy } from "./path-policy.ts";
+import type { Advice, AdvisorConfig } from "./contracts.ts";
+import { validateAdvice } from "./contracts.ts";
 import { createResolvedPathPolicy } from "./path-access.ts";
+import type { PathPolicy } from "./path-policy.ts";
 import { executeRepositoryTool } from "./repository-tools.ts";
-import {
-	type AdvisorToolCall,
-	classifyTurn,
-	isPrivateTool,
-	isRepositoryTool,
-	PRIVATE_TOOLS,
-} from "./turn-policy.ts";
+import { type AdvisorToolCall, classifyTurn, isPrivateTool, isRepositoryTool, PRIVATE_TOOLS } from "./turn-policy.ts";
 
 /**
  * The private consultation loop: the advisor's own agentic turn-taking, walled off
@@ -36,20 +30,39 @@ import {
  */
 const INVALID_SUBMISSION_NOTICE =
 	"Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.";
-const READ_BUDGET_NOTICE = "Read-only tool budget is exhausted. Submit advice now without another repository tool call.";
+const READ_BUDGET_NOTICE =
+	"Read-only tool budget is exhausted. Submit advice now without another repository tool call.";
 
 function addUsage(total: Usage | undefined, usage: Usage | undefined): Usage | undefined {
 	if (!usage) return total;
 	if (!total) return { ...usage, cost: { ...usage.cost } };
 	return {
-		input: total.input + usage.input, output: total.output + usage.output, cacheRead: total.cacheRead + usage.cacheRead,
-		cacheWrite: total.cacheWrite + usage.cacheWrite, cacheWrite1h: (total.cacheWrite1h ?? 0) + (usage.cacheWrite1h ?? 0), reasoning: (total.reasoning ?? 0) + (usage.reasoning ?? 0), totalTokens: total.totalTokens + usage.totalTokens,
-		cost: { input: total.cost.input + usage.cost.input, output: total.cost.output + usage.cost.output, cacheRead: total.cost.cacheRead + usage.cost.cacheRead, cacheWrite: total.cost.cacheWrite + usage.cost.cacheWrite, total: total.cost.total + usage.cost.total },
+		input: total.input + usage.input,
+		output: total.output + usage.output,
+		cacheRead: total.cacheRead + usage.cacheRead,
+		cacheWrite: total.cacheWrite + usage.cacheWrite,
+		cacheWrite1h: (total.cacheWrite1h ?? 0) + (usage.cacheWrite1h ?? 0),
+		reasoning: (total.reasoning ?? 0) + (usage.reasoning ?? 0),
+		totalTokens: total.totalTokens + usage.totalTokens,
+		cost: {
+			input: total.cost.input + usage.cost.input,
+			output: total.cost.output + usage.cost.output,
+			cacheRead: total.cost.cacheRead + usage.cost.cacheRead,
+			cacheWrite: total.cost.cacheWrite + usage.cost.cacheWrite,
+			total: total.cost.total + usage.cost.total,
+		},
 	};
 }
 
 function toolResult(id: string, name: string, text: string, now: () => number) {
-	return { role: "toolResult" as const, toolCallId: id, toolName: name, content: [{ type: "text" as const, text }], isError: false, timestamp: now() };
+	return {
+		role: "toolResult" as const,
+		toolCallId: id,
+		toolName: name,
+		content: [{ type: "text" as const, text }],
+		isError: false,
+		timestamp: now(),
+	};
 }
 
 interface CompletionRegistry {
@@ -110,12 +123,22 @@ export async function runAdvisorLoop(input: {
 	signal?: AbortSignal;
 	/** Injected clock (S6). Only ever stamps message timestamps. */
 	now?: () => number;
-}): Promise<{ advice?: Advice; usage?: Usage; readOnlyToolCalls: number; failure?: "aborted" | "timeout" | "invalid_response" | "provider_error" }> {
+}): Promise<{
+	advice?: Advice;
+	usage?: Usage;
+	readOnlyToolCalls: number;
+	failure?: "aborted" | "timeout" | "invalid_response" | "provider_error";
+}> {
 	const now = input.now ?? Date.now;
 	const timeout = new AbortController();
 	const timer = setTimeout(() => timeout.abort(), input.config.limits.timeoutMs);
 	const signal = AbortSignal.any(input.signal ? [input.signal, timeout.signal] : [timeout.signal]);
-	const options = advisorCompletionOptions(input.model, input.config.thinking, input.config.limits.maxAdvisorOutputTokens, signal);
+	const options = advisorCompletionOptions(
+		input.model,
+		input.config.thinking,
+		input.config.limits.maxAdvisorOutputTokens,
+		signal,
+	);
 	if (!options) return { readOnlyToolCalls: 0, failure: "invalid_response" };
 	const context: Context = {
 		systemPrompt: input.systemPrompt,
@@ -175,5 +198,7 @@ export async function runAdvisorLoop(input: {
 	} catch {
 		if (signal.aborted) return { usage, readOnlyToolCalls, failure: timeout.signal.aborted ? "timeout" : "aborted" };
 		return { usage, readOnlyToolCalls, failure: "provider_error" };
-	} finally { clearTimeout(timer); }
+	} finally {
+		clearTimeout(timer);
+	}
 }

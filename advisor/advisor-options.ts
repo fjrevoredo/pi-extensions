@@ -1,4 +1,4 @@
-import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
+import { type Api, getSupportedThinkingLevels, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "./contracts.ts";
 
 /**
@@ -52,16 +52,23 @@ function requiredToolChoice(api: Api): ToolChoice | undefined {
 	}
 }
 
-function anthropicEffort(model: Model<Api>, level: Exclude<ThinkingLevel, "off">): "low" | "medium" | "high" | "xhigh" | "max" {
+function anthropicEffort(
+	model: Model<Api>,
+	level: Exclude<ThinkingLevel, "off">,
+): "low" | "medium" | "high" | "xhigh" | "max" {
 	const mapped = model.thinkingLevelMap?.[level];
-	if (typeof mapped === "string" && ANTHROPIC_EFFORTS.has(mapped)) return mapped as "low" | "medium" | "high" | "xhigh" | "max";
+	if (typeof mapped === "string" && ANTHROPIC_EFFORTS.has(mapped))
+		return mapped as "low" | "medium" | "high" | "xhigh" | "max";
 	if (level === "minimal" || level === "low") return "low";
 	if (level === "medium") return "medium";
 	if (level === "high") return "high";
 	return "high";
 }
 
-function googleThinkingLevel(model: Model<Api>, level: Exclude<ThinkingLevel, "off">): "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" {
+function googleThinkingLevel(
+	model: Model<Api>,
+	level: Exclude<ThinkingLevel, "off">,
+): "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" {
 	const mapped = model.thinkingLevelMap?.[level];
 	if (typeof mapped === "string" && GOOGLE_LEVELS.has(mapped)) return mapped as "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
 	if (level === "minimal") return "MINIMAL";
@@ -75,7 +82,12 @@ function googleThinkingLevel(model: Model<Api>, level: Exclude<ThinkingLevel, "o
  * option. This adapter sends only documented, API-specific options. It rejects
  * an unavailable level instead of silently dropping it.
  */
-export function advisorCompletionOptions(model: Model<Api>, level: ThinkingLevel, maxTokens: number, signal: AbortSignal) {
+export function advisorCompletionOptions(
+	model: Model<Api>,
+	level: ThinkingLevel,
+	maxTokens: number,
+	signal: AbortSignal,
+) {
 	if (!isSupportedThinking(model, level)) return undefined;
 	const toolChoice = requiredToolChoice(model.api);
 	if (!toolChoice) return undefined;

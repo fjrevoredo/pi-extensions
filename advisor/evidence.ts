@@ -1,7 +1,7 @@
 import {
 	EVIDENCE_TRUNCATION_MARKER,
-	redactKnownSecrets,
 	REGION_TRUNCATION_MARKER,
+	redactKnownSecrets,
 	truncateMiddle,
 } from "./outbound-text.ts";
 
@@ -60,7 +60,8 @@ export function textFromContent(content: unknown): string {
  * output as independent corroboration.
  */
 export function summarizeMessage(message: SessionMessage): string | undefined {
-	if (message.role === "user" || message.role === "custom") return `USER: ${boundRegion(textFromContent(message.content))}`;
+	if (message.role === "user" || message.role === "custom")
+		return `USER: ${boundRegion(textFromContent(message.content))}`;
 	if (message.role === "toolResult") {
 		if (message.toolName === "consult_advisor") return undefined;
 		return `TOOL ${message.toolName}: ${boundRegion(textFromContent(message.content))}`;

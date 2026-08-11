@@ -1,5 +1,5 @@
 import { StringEnum, type Usage } from "@earendil-works/pi-ai";
-import { Type, type Static } from "typebox";
+import { type Static, Type } from "typebox";
 
 /**
  * The two contracts the advisor is held to, and the shapes shared across the
@@ -116,37 +116,70 @@ export function defaultConfig(): AdvisorConfig {
 }
 
 function boundedStrings(value: unknown, minimum: number, maximum: number, maxLength: number): value is string[] {
-	return Array.isArray(value) && value.length >= minimum && value.length <= maximum && value.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= maxLength);
+	return (
+		Array.isArray(value) &&
+		value.length >= minimum &&
+		value.length <= maximum &&
+		value.every((item) => typeof item === "string" && item.trim().length > 0 && item.length <= maxLength)
+	);
 }
 
 export function validateAdvice(value: unknown): Advice | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	const advice = value as Record<string, unknown>;
-	const expected = new Set(["outcome", "summary", "rationale", "recommendedActions", "risks", "verification", "assumptions", "confidence"]);
+	const expected = new Set([
+		"outcome",
+		"summary",
+		"rationale",
+		"recommendedActions",
+		"risks",
+		"verification",
+		"assumptions",
+		"confidence",
+	]);
 	if (Object.keys(advice).some((key) => !expected.has(key))) return undefined;
-	if (!(["on_track", "course_correct", "not_ready", "stop"] as const).includes(advice.outcome as Advice["outcome"])) return undefined;
+	if (!(["on_track", "course_correct", "not_ready", "stop"] as const).includes(advice.outcome as Advice["outcome"]))
+		return undefined;
 	if (typeof advice.summary !== "string" || !advice.summary.trim() || advice.summary.length > 1_200) return undefined;
-	if (!boundedStrings(advice.rationale, 1, 8, 1_000) || !boundedStrings(advice.recommendedActions, 0, 5, 600)) return undefined;
-	if (!boundedStrings(advice.verification, 0, 6, 500) || !boundedStrings(advice.assumptions, 0, 6, 500)) return undefined;
-	if (!(["low", "medium", "high"] as const).includes(advice.confidence as Advice["confidence"]) || !Array.isArray(advice.risks) || advice.risks.length > 8) return undefined;
+	if (!boundedStrings(advice.rationale, 1, 8, 1_000) || !boundedStrings(advice.recommendedActions, 0, 5, 600))
+		return undefined;
+	if (!boundedStrings(advice.verification, 0, 6, 500) || !boundedStrings(advice.assumptions, 0, 6, 500))
+		return undefined;
+	if (
+		!(["low", "medium", "high"] as const).includes(advice.confidence as Advice["confidence"]) ||
+		!Array.isArray(advice.risks) ||
+		advice.risks.length > 8
+	)
+		return undefined;
 	for (const risk of advice.risks) {
 		if (!risk || typeof risk !== "object" || Array.isArray(risk)) return undefined;
 		const item = risk as Record<string, unknown>;
-		if (Object.keys(item).some((key) => key !== "severity" && key !== "description" && key !== "evidence")) return undefined;
-		if (!(["low", "medium", "high", "critical"] as const).includes(item.severity as "low" | "medium" | "high" | "critical")) return undefined;
-		if (typeof item.description !== "string" || !item.description.trim() || item.description.length > 800) return undefined;
+		if (Object.keys(item).some((key) => key !== "severity" && key !== "description" && key !== "evidence"))
+			return undefined;
+		if (
+			!(["low", "medium", "high", "critical"] as const).includes(
+				item.severity as "low" | "medium" | "high" | "critical",
+			)
+		)
+			return undefined;
+		if (typeof item.description !== "string" || !item.description.trim() || item.description.length > 800)
+			return undefined;
 		if (item.evidence !== undefined && !boundedStrings(item.evidence, 0, 5, 300)) return undefined;
 	}
 	const typed = advice as unknown as Advice;
 	if (typed.outcome === "on_track" && typed.risks.length > 0) return undefined;
-	if ((typed.outcome === "not_ready" || typed.outcome === "stop") && typed.recommendedActions.length === 0) return undefined;
+	if ((typed.outcome === "not_ready" || typed.outcome === "stop") && typed.recommendedActions.length === 0)
+		return undefined;
 	return typed;
 }
 
 export function formatAdvice(advice: Advice): string {
 	const lines = [`Advisor outcome: ${advice.outcome}`, `Summary: ${advice.summary}`];
 	if (advice.recommendedActions.length) {
-		lines.push("Recommended actions:", ...advice.recommendedActions.map((action, index) => `${index + 1}. ${action}`));
+		lines.push(
+			"Recommended actions:",
+			...advice.recommendedActions.map((action, index) => `${index + 1}. ${action}`),
+		);
 	}
 	if (advice.verification.length) lines.push(`Verification: ${advice.verification.join("; ")}`);
 	return lines.join("\n");

@@ -68,7 +68,10 @@ export async function createResolvedPathPolicy(options: PathPolicyOptions): Prom
 	return createPathPolicy({ ...options, root, agentDirectory });
 }
 
-export async function resolveAllowedPath(policy: PathPolicy, requested: string): Promise<{ path?: string; error?: string }> {
+export async function resolveAllowedPath(
+	policy: PathPolicy,
+	requested: string,
+): Promise<{ path?: string; error?: string }> {
 	if (!requested || typeof requested !== "string" || isAbsolute(requested)) return { error: OUTSIDE_ROOT_ERROR };
 	// The root is canonical already, by construction. Re-deriving it here is what
 	// let it disagree with the copy stored on the policy (P6).

@@ -2,8 +2,8 @@ import type { Dirent } from "node:fs";
 import { open, readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { bounded, boundedOutput, MAX_OUTPUT_BYTES, OUTPUT_TRUNCATION_NOTICE } from "./outbound-text.ts";
-import type { PathPolicy } from "./path-policy.ts";
 import { resolveAllowedPath } from "./path-access.ts";
+import type { PathPolicy } from "./path-policy.ts";
 import { displayPath } from "./path-policy.ts";
 
 /**
@@ -35,7 +35,19 @@ const MAX_DEPTH = 6;
  * a path.
  */
 const EXCLUDED = new Set([".git", "node_modules", "dist", "build", "coverage", ".cache"]);
-const IMAGE_EXTENSIONS = new Set([".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".tif", ".tiff", ".webp"]);
+const IMAGE_EXTENSIONS = new Set([
+	".avif",
+	".bmp",
+	".gif",
+	".ico",
+	".jpeg",
+	".jpg",
+	".png",
+	".svg",
+	".tif",
+	".tiff",
+	".webp",
+]);
 
 async function readBounded(path: string, signal?: AbortSignal): Promise<string> {
 	signal?.throwIfAborted();
@@ -50,7 +62,9 @@ async function readBounded(path: string, signal?: AbortSignal): Promise<string> 
 		const contents = buffer.subarray(0, bytesRead);
 		if (contents.includes(0)) throw new Error("Binary files are not available to the advisor.");
 		return contents.toString("utf8");
-	} finally { await handle.close(); }
+	} finally {
+		await handle.close();
+	}
 }
 
 async function walk(policy: PathPolicy, start: string, maxDepth: number, signal?: AbortSignal): Promise<string[]> {
@@ -61,7 +75,12 @@ async function walk(policy: PathPolicy, start: string, maxDepth: number, signal?
 	async function visit(directory: string, depth: number): Promise<void> {
 		signal?.throwIfAborted();
 		if (depth > maxDepth || output.length >= MAX_ENTRIES) return;
-		let entries: Dirent[]; try { entries = await readdir(directory, { withFileTypes: true }); } catch { return; }
+		let entries: Dirent[];
+		try {
+			entries = await readdir(directory, { withFileTypes: true });
+		} catch {
+			return;
+		}
 		for (const entry of entries) {
 			if (output.length >= MAX_ENTRIES || EXCLUDED.has(entry.name)) continue;
 			const requested = relative(root, join(directory, entry.name));
@@ -103,11 +122,22 @@ export async function executeRepositoryTool(
 		}
 		return boundedOutput(values.join("\n"), policy.redactKnownSecrets);
 	}
-	const files = await walk(policy, allowed.path, typeof args.maxDepth === "number" ? Math.min(MAX_DEPTH, Math.max(0, args.maxDepth)) : MAX_DEPTH, signal);
-	if (name === "find") return boundedOutput(files.map((path) => displayPath(policy.root, path)).join("\n"), policy.redactKnownSecrets);
+	const files = await walk(
+		policy,
+		allowed.path,
+		typeof args.maxDepth === "number" ? Math.min(MAX_DEPTH, Math.max(0, args.maxDepth)) : MAX_DEPTH,
+		signal,
+	);
+	if (name === "find")
+		return boundedOutput(files.map((path) => displayPath(policy.root, path)).join("\n"), policy.redactKnownSecrets);
 	const pattern = typeof args.pattern === "string" ? args.pattern : "";
 	if (!pattern || pattern.length > 200) return "Error: grep requires a short text pattern.";
-	let expression: RegExp; try { expression = new RegExp(pattern, "i"); } catch { return "Error: grep pattern is invalid."; }
+	let expression: RegExp;
+	try {
+		expression = new RegExp(pattern, "i");
+	} catch {
+		return "Error: grep pattern is invalid.";
+	}
 	const matches: string[] = [];
 	for (const file of files) {
 		if (matches.length >= MAX_ENTRIES) break;
@@ -117,7 +147,9 @@ export async function executeRepositoryTool(
 				if (expression.test(line)) matches.push(`${displayPath(policy.root, file)}:${index + 1}:${line}`);
 				if (matches.length >= MAX_ENTRIES) break;
 			}
-		} catch { /* unreadable files are intentionally skipped */ }
+		} catch {
+			/* unreadable files are intentionally skipped */
+		}
 	}
 	return boundedOutput(matches.join("\n"), policy.redactKnownSecrets);
 }

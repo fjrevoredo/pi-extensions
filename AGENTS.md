@@ -110,6 +110,7 @@ Two need extra care:
 - **`permission-gate`** is the only safety-critical extension. Be conservative with prompts,
   allow/deny behaviour, and the rule catalogue — rule *order* is behaviour, not formatting
   (`P3`).
-- **`advisor`** is in flight and bound by the structural rules only. Its style pass is
-  deferred until it is promoted to production-ready, and it is excluded from Biome in
-  `biome.json` until then. **Do not reformat it.**
+- **`advisor`** is the other extension that can cause harm: it sends repository text to a
+  third-party provider. Its path filter and its redaction are policy in the same sense
+  permission-gate's catalogue is — the module headers say what each intentionally does not
+  cover, and widening either widens what leaves the machine (`P1`–`P6`).

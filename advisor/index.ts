@@ -23,20 +23,20 @@
  * a provider on any failure path.
  */
 
-import { getAgentDir, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getSupportedThinkingLevels, type Api, type Model, type Usage } from "@earendil-works/pi-ai";
+import { type Api, getSupportedThinkingLevels, type Model, type Usage } from "@earendil-works/pi-ai";
+import { type ExtensionAPI, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { runAdvisorLoop } from "./advisor-loop.ts";
 import { advisorCompletionOptions, isSupportedThinking } from "./advisor-options.ts";
 import { advisorConfigPath, loadConfig, saveConfig } from "./config.ts";
 import { checkAdvisorModel, decideConsultation, FAILURE_MESSAGES } from "./consultation.ts";
-import { formatAdvice, type AdvisorConfig, type AdvisorDetails, type AdvisorFailure } from "./contracts.ts";
 import { buildAdvisorContext } from "./context.ts";
+import { type AdvisorConfig, type AdvisorDetails, type AdvisorFailure, formatAdvice } from "./contracts.ts";
 import { modelName } from "./model-reference.ts";
-import { runAdvisorLoop } from "./advisor-loop.ts";
 import {
-	capabilityWarning,
 	CONFIG_UNAVAILABLE_MESSAGE,
+	capabilityWarning,
 	DISCLOSURE_TITLE,
 	formatAdvisorStatus,
 	MODEL_SELECT_PROMPT,

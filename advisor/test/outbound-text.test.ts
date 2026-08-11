@@ -7,8 +7,8 @@ import {
 	MAX_OUTPUT_BYTES,
 	MAX_OUTPUT_LINES,
 	OUTPUT_TRUNCATION_NOTICE,
-	redactKnownSecrets,
 	REGION_TRUNCATION_MARKER,
+	redactKnownSecrets,
 	truncateMiddle,
 } from "../outbound-text.ts";
 

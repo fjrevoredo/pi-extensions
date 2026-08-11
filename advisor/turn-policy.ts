@@ -73,9 +73,8 @@ export function isRepositoryTool(name: string): name is RepositoryToolName {
 }
 
 export function toolCallsIn(content: readonly unknown[]): AdvisorToolCall[] {
-	return content.filter(
-		(part: unknown): part is AdvisorToolCall =>
-			Boolean(part && typeof part === "object" && (part as { type?: string }).type === "toolCall"),
+	return content.filter((part: unknown): part is AdvisorToolCall =>
+		Boolean(part && typeof part === "object" && (part as { type?: string }).type === "toolCall"),
 	);
 }
 

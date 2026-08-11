@@ -3,8 +3,8 @@ import test from "node:test";
 import { type AdvisorConfig, defaultConfig } from "../contracts.ts";
 import {
 	type AdvisorCommand,
-	capabilityWarning,
 	CONFIG_UNAVAILABLE_MESSAGE,
+	capabilityWarning,
 	DISCLOSURE_TITLE,
 	formatAdvisorStatus,
 	MODEL_SELECT_PROMPT,

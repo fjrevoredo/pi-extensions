@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
-import { ADVISOR_VERSION, defaultConfig, DEFAULT_LIMITS, type AdvisorConfig, THINKING_LEVELS } from "./contracts.ts";
+import { ADVISOR_VERSION, type AdvisorConfig, DEFAULT_LIMITS, defaultConfig, THINKING_LEVELS } from "./contracts.ts";
 import { MODEL_REFERENCE_PATTERN } from "./model-reference.ts";
 
 /**
@@ -44,22 +44,59 @@ export function validateConfig(value: unknown): AdvisorConfig | undefined {
 	if (!hasOnlyKeys(value, ["version", "enabled", "model", "thinking", "limits", "security"])) return undefined;
 	const input = value as Partial<AdvisorConfig>;
 	if (input.version !== ADVISOR_VERSION || typeof input.enabled !== "boolean") return undefined;
-	if (input.model !== undefined && (typeof input.model !== "string" || !MODEL_REFERENCE_PATTERN.test(input.model))) return undefined;
+	if (input.model !== undefined && (typeof input.model !== "string" || !MODEL_REFERENCE_PATTERN.test(input.model)))
+		return undefined;
 	if (!THINKING_LEVELS.includes(input.thinking as AdvisorConfig["thinking"])) return undefined;
 	const limits = input.limits;
-	if (!limits || typeof limits !== "object" || Array.isArray(limits) || !hasOnlyKeys(limits, Object.keys(DEFAULT_LIMITS))) return undefined;
+	if (
+		!limits ||
+		typeof limits !== "object" ||
+		Array.isArray(limits) ||
+		!hasOnlyKeys(limits, Object.keys(DEFAULT_LIMITS))
+	)
+		return undefined;
 	const caps: Array<[keyof typeof DEFAULT_LIMITS, number, number]> = [
-		["maxConsultationsPerRun", 1, 10], ["maxConsultationsPerSession", 1, 100], ["maxAdvisorTurns", 1, 20],
-		["maxReadOnlyToolCalls", 1, 50], ["maxContextBytes", 4_096, 500_000], ["maxAdvisorOutputTokens", 256, 16_000], ["timeoutMs", 5_000, 600_000],
+		["maxConsultationsPerRun", 1, 10],
+		["maxConsultationsPerSession", 1, 100],
+		["maxAdvisorTurns", 1, 20],
+		["maxReadOnlyToolCalls", 1, 50],
+		["maxContextBytes", 4_096, 500_000],
+		["maxAdvisorOutputTokens", 256, 16_000],
+		["timeoutMs", 5_000, 600_000],
 	];
 	for (const [key, min, max] of caps) if (!isPositiveInteger(limits[key], min, max)) return undefined;
 	if (limits.maxConsultationsPerRun > limits.maxConsultationsPerSession) return undefined;
 	const security = input.security;
-	if (!security || typeof security !== "object" || Array.isArray(security) || !hasOnlyKeys(security, ["redactKnownSecrets", "additionalProtectedPaths"]) || typeof security.redactKnownSecrets !== "boolean" || !Array.isArray(security.additionalProtectedPaths)) return undefined;
-	if (security.additionalProtectedPaths.some((path) => typeof path !== "string" || !path.trim() || path.length > 240 || isAbsolute(path) || normalize(path).split(sep).includes(".."))) return undefined;
+	if (
+		!security ||
+		typeof security !== "object" ||
+		Array.isArray(security) ||
+		!hasOnlyKeys(security, ["redactKnownSecrets", "additionalProtectedPaths"]) ||
+		typeof security.redactKnownSecrets !== "boolean" ||
+		!Array.isArray(security.additionalProtectedPaths)
+	)
+		return undefined;
+	if (
+		security.additionalProtectedPaths.some(
+			(path) =>
+				typeof path !== "string" ||
+				!path.trim() ||
+				path.length > 240 ||
+				isAbsolute(path) ||
+				normalize(path).split(sep).includes(".."),
+		)
+	)
+		return undefined;
 	return {
-		version: ADVISOR_VERSION, enabled: input.enabled, ...(input.model ? { model: input.model } : {}), thinking: input.thinking as AdvisorConfig["thinking"],
-		limits: { ...limits }, security: { redactKnownSecrets: security.redactKnownSecrets, additionalProtectedPaths: [...security.additionalProtectedPaths] },
+		version: ADVISOR_VERSION,
+		enabled: input.enabled,
+		...(input.model ? { model: input.model } : {}),
+		thinking: input.thinking as AdvisorConfig["thinking"],
+		limits: { ...limits },
+		security: {
+			redactKnownSecrets: security.redactKnownSecrets,
+			additionalProtectedPaths: [...security.additionalProtectedPaths],
+		},
 	};
 }
 
@@ -90,7 +127,9 @@ export async function saveConfig(config: AdvisorConfig, path: string): Promise<v
 
 export function formatConfig(config: AdvisorConfig): string {
 	return [
-		`enabled: ${config.enabled}`, `model: ${config.model ?? "not configured"}`, `thinking: ${config.thinking}`,
+		`enabled: ${config.enabled}`,
+		`model: ${config.model ?? "not configured"}`,
+		`thinking: ${config.thinking}`,
 		`limits: ${config.limits.maxConsultationsPerRun}/run, ${config.limits.maxConsultationsPerSession}/session, ${config.limits.maxAdvisorTurns} turns, ${config.limits.maxReadOnlyToolCalls} reads`,
 		`redaction: ${config.security.redactKnownSecrets ? "on" : "off"}`,
 	].join("\n");

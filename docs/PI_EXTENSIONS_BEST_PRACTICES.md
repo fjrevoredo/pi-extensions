@@ -497,8 +497,6 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 
 Half of that rationale was originally wrong and has been corrected: it said extension load was covered by `pi --list-models`, which was later measured and does not detect a broken extension at all (§17). The T4 harnesses were doing the work the whole time.
 
-`advisor` is bound by the structural rules from step 8 onward. Its style pass (F5, S1, the 734-character line, the Biome reformat) happens when the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff.
-
 ---
 
 ## 16. Conformance of the current extensions

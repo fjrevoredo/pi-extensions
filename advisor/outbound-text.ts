@@ -53,8 +53,12 @@ export function redactKnownSecrets(text: string): string {
  */
 export function truncateMiddle(text: string, maxBytes: number, marker: string): string {
 	if (Buffer.byteLength(text) <= maxBytes) return text;
-	const head = Buffer.from(text).subarray(0, Math.floor(maxBytes * 0.7)).toString("utf8");
-	const tail = Buffer.from(text).subarray(-Math.floor(maxBytes * 0.25)).toString("utf8");
+	const head = Buffer.from(text)
+		.subarray(0, Math.floor(maxBytes * 0.7))
+		.toString("utf8");
+	const tail = Buffer.from(text)
+		.subarray(-Math.floor(maxBytes * 0.25))
+		.toString("utf8");
 	return `${head}\n… ${marker} …\n${tail}`;
 }
 

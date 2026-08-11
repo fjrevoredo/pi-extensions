@@ -171,7 +171,11 @@ export function isProtected(root: string, target: string, additions: string[]): 
  * checks in `resolveAllowedPath` are this same question asked twice, which is
  * why it is one function rather than an inlined pair of conditions.
  */
-export function admits(policy: PathPolicy, root: string, candidate: string): { ok: true } | { ok: false; error: string } {
+export function admits(
+	policy: PathPolicy,
+	root: string,
+	candidate: string,
+): { ok: true } | { ok: false; error: string } {
 	if (!isWithin(root, candidate) || isProtected(root, candidate, policy.additionalProtectedPaths)) {
 		return { ok: false, error: PROTECTED_OR_OUTSIDE_ERROR };
 	}

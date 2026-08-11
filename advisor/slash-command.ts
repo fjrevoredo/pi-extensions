@@ -1,6 +1,6 @@
 import { formatConfig } from "./config.ts";
 import type { AdvisorConfig, AdvisorFailure } from "./contracts.ts";
-import { modelName, type ModelReference } from "./model-reference.ts";
+import { type ModelReference, modelName } from "./model-reference.ts";
 
 /**
  * The pure core of the `/advisor` command: what an argument means, and every
