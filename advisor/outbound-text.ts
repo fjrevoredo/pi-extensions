@@ -1,14 +1,26 @@
 /**
  * Everything that caps or redacts text before it leaves this machine.
  *
- * Security posture: this is risk reduction, not a security sandbox. Redaction is
- * pattern matching over text and will miss secrets that do not look like the
- * patterns below; the caps bound how much material a single result can carry,
- * not what it means. Treat both as guardrails.
+ * **Security posture: this is risk reduction. It is not a security sandbox.**
+ * Redaction is pattern matching over text and will miss secrets that do not look
+ * like the patterns below; the caps bound how much material a single result can
+ * carry, not what it means. Treat both as guardrails.
+ *
+ * This is the **second of two independent layers**, and the pairing is the
+ * design. path-policy.ts decides which files may be opened at all, from the path
+ * alone; this decides what survives from whatever was opened. Neither is
+ * sufficient — a permitted file can still contain a token, and a redactor cannot
+ * un-read a private key — and each covers a class of mistake the other cannot see.
  *
  * This module is the one place the boundary is enforced, and it has three
  * callers — the repository tools, the evidence builder, and the advisor loop's
  * tool results. Keep it pure: no pi, no filesystem, no clock.
+ *
+ * Ordering is behaviour where these are composed: `bounded` caps and then
+ * redacts, so redaction always runs over the text that will actually be sent,
+ * while `composeEvidence` redacts and then caps for the same reason. Reversing
+ * either lets a cut land mid-secret and leave a fragment too short to match —
+ * test/evidence.test.ts sweeps the alignments that expose it.
  *
  * Known limitation, deliberately not fixed here: the byte-wise caps can split a
  * multi-byte UTF-8 sequence, which surfaces as U+FFFD in the output. It is

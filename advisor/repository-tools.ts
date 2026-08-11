@@ -8,6 +8,14 @@ import { displayPath } from "./path-policy.ts";
 
 const MAX_ENTRIES = 200;
 const MAX_DEPTH = 6;
+
+/**
+ * A noise filter, **not** policy — that is path-policy.ts's job, and `.git`
+ * appears in both lists independently. The distinction matters: this stays
+ * case-sensitive **intentionally**, because a mixed-case miss here costs a little
+ * wasted output rather than admitting anything. Nothing may rely on this to deny
+ * a path.
+ */
 const EXCLUDED = new Set([".git", "node_modules", "dist", "build", "coverage", ".cache"]);
 const IMAGE_EXTENSIONS = new Set([".avif", ".bmp", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".tif", ".tiff", ".webp"]);
 
