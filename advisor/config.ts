@@ -3,6 +3,23 @@ import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 import { ADVISOR_VERSION, defaultConfig, DEFAULT_LIMITS, type AdvisorConfig, THINKING_LEVELS } from "./contracts.ts";
 import { MODEL_REFERENCE_PATTERN } from "./model-reference.ts";
 
+/**
+ * The advisor's stored configuration: validating it, reading it, writing it.
+ *
+ * **S1 deviation, deliberate.** This is one mixed module — pure validation beside
+ * real filesystem access — where the rule asks for a pure core and a separate
+ * shell. The split is not worth making: since A2 made `path` a required parameter,
+ * `validateConfig` and `formatConfig` are already callable with no filesystem in
+ * sight, and `loadConfig`/`saveConfig` are already testable against a temporary
+ * directory. Separating them would add a module boundary and buy no testability,
+ * which is the only thing S1 exists to protect. test/config.test.ts demonstrates
+ * both halves being tested independently.
+ *
+ * `validateConfig` is the trust boundary for everything downstream: the file is
+ * user-editable, so nothing may assume a field exists or is in range without
+ * having come through here. It rejects unknown keys rather than ignoring them, so
+ * a typo in a limit name is reported instead of silently taking the default.
+ */
 export const ADVISOR_CONFIG_FILENAME = "advisor.json";
 
 /**

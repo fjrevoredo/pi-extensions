@@ -1,6 +1,28 @@
 import { StringEnum, type Usage } from "@earendil-works/pi-ai";
 import { Type, type Static } from "typebox";
 
+/**
+ * The two contracts the advisor is held to, and the shapes shared across the
+ * extension: the configuration schema, and the advice schema with the prompt that
+ * asks for it.
+ *
+ * `AdviceSchema` and `SYSTEM_PROMPT` live together because they are two halves of
+ * one agreement — the prompt enumerates the schema's required fields in prose, and
+ * drift between them is invisible at runtime. The advisor is told to submit a
+ * shape the validator rejects, which surfaces only as `invalid_response` and no
+ * advice, with nothing pointing at the cause. test/contracts.test.ts walks
+ * `AdviceSchema.required` and asserts the prompt still mentions every field.
+ *
+ * `validateAdvice` re-checks by hand rather than trusting the schema alone, and
+ * that is not redundancy: two of the rules cannot be expressed in JSON Schema at
+ * all. An `on_track` result may not carry risks, because it would contradict
+ * itself; a `not_ready` or `stop` result must recommend something, because
+ * otherwise the driver is stopped with nowhere to go.
+ *
+ * **Changing either schema is a breaking change** (§19). The advice shape is what
+ * the driver renders and what the session journal stores, and the configuration
+ * version is what `validateConfig` refuses to migrate silently.
+ */
 export const ADVISOR_VERSION = 1;
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];

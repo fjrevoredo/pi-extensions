@@ -13,6 +13,27 @@ import {
 	PRIVATE_TOOLS,
 } from "./turn-policy.ts";
 
+/**
+ * The private consultation loop: the advisor's own agentic turn-taking, walled off
+ * from the driver's.
+ *
+ * Nothing outside this module can reach the advisor, and the advisor cannot reach
+ * anything outside it. That containment is the extension's central claim, and it
+ * rests on three bounds enforced here rather than trusted: `maxAdvisorTurns` caps
+ * how long it may run, `maxReadOnlyToolCalls` caps how much it may read, and
+ * `timeoutMs` caps wall-clock time through an AbortSignal composed with the
+ * caller's.
+ *
+ * Every decision is delegated — the turn shape to turn-policy.ts, the path filter
+ * to path-access.ts, advice validation to contracts.ts, outbound bounding to
+ * outbound-text.ts. What is left here is orchestration and effects, which is why
+ * it keeps a clock parameter (S6) instead of reading one.
+ *
+ * A budget that runs out is not an error: the advisor is told, in the tool result,
+ * that it must submit now. Telling it beats truncating it, because an advisor that
+ * knows it is out of reads writes a conclusion rather than being cut off
+ * mid-thought.
+ */
 const INVALID_SUBMISSION_NOTICE =
 	"Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.";
 const READ_BUDGET_NOTICE = "Read-only tool budget is exhausted. Submit advice now without another repository tool call.";

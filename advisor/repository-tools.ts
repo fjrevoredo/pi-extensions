@@ -6,6 +6,24 @@ import type { PathPolicy } from "./path-policy.ts";
 import { resolveAllowedPath } from "./path-access.ts";
 import { displayPath } from "./path-policy.ts";
 
+/**
+ * The four read-only tools the advisor may reach: `read`, `grep`, `find`, `ls`.
+ *
+ * This is the shell that turns an admitted path into text. It owns no policy —
+ * which paths are permitted is path-policy.ts, what survives on the way out is
+ * outbound-text.ts — and every path it touches has been through
+ * `resolveAllowedPath` first, including each entry discovered while walking. That
+ * matters: a directory listing is not a licence to read what is inside it, so the
+ * walk re-asks for every child rather than trusting its parent.
+ *
+ * A refusal is returned as a normal result prefixed `Denied:`, not thrown. The
+ * advisor is being told something it can act on, and every tool routes through the
+ * same wording so a refusal never reveals which of the two reasons applied.
+ *
+ * `read` refuses directories, images and anything containing a NUL byte. The last
+ * is a cheap binary check rather than content sniffing: shipping a binary to the
+ * provider costs tokens and tells the advisor nothing.
+ */
 const MAX_ENTRIES = 200;
 const MAX_DEPTH = 6;
 

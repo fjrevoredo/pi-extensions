@@ -1,6 +1,30 @@
 import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "./contracts.ts";
 
+/**
+ * Translating one configured thinking level into the options a specific provider
+ * API actually accepts.
+ *
+ * **S2 deviation, deliberate.** This module imports from `@earendil-works/*`,
+ * which core modules are told not to do. It is unavoidable here and the reason is
+ * the module's whole purpose: every decision below is a function of pi's own
+ * `Model` metadata — `model.api`, `model.thinkingLevelMap`, and what
+ * `getSupportedThinkingLevels` reports. Injecting that would mean re-declaring
+ * pi's model shape locally and keeping the copy in step with the package, which
+ * trades a real coupling for a silent one.
+ *
+ * Contrast `model-reference.ts` and `slash-command.ts`, which take structural
+ * parameter types and so need no pi import: that works because they read one or
+ * two named fields. It does not generalise to a module whose entire job is
+ * per-API dispatch.
+ *
+ * The mapping is per API rather than provider-neutral because
+ * `ModelRegistry.complete()` does not accept pi's neutral `reasoning` option, and
+ * an unsupported level is **rejected** rather than quietly downgraded — a
+ * consultation that silently thought less than the user configured would be worse
+ * than one that refuses and says so (`unsupported_thinking`).
+ */
+
 const ANTHROPIC_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 const GOOGLE_LEVELS = new Set(["MINIMAL", "LOW", "MEDIUM", "HIGH"]);
 

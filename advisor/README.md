@@ -18,6 +18,8 @@ Use these commands:
 
 The default configuration is disabled. The default limits are 3 consultations per agent run, 12 per session, 6 advisor turns, 8 read-only tool calls, 96 KiB context, 1,600 output tokens per advisor turn, and a 120 second deadline.
 
+A model whose id contains a slash — Vertex's `publishers/google/…` — cannot currently be configured: the stored reference must be exactly `provider/id` with one slash.
+
 ## Driver call policy
 
 Call `consult_advisor({})` after relevant repository reads and before a consequential design, broad refactor, high-risk change, repeated failure, or non-trivial completion claim.
@@ -30,6 +32,47 @@ The extension sends selected driver evidence and permitted repository text to th
 
 This is risk reduction. It is not a security sandbox. Hard-link aliases and same-user filesystem races remain outside this policy.
 
-Failures are fail-open. The driver receives a concise normal tool result and must continue from local evidence. Raw advisor reasoning, raw provider responses, and raw read output are not persisted.
+Two independent layers do the work, and neither is sufficient alone. `path-policy.ts` decides which files may be opened, from the path alone; `outbound-text.ts` decides what survives from whatever was opened. Both module headers list what they intentionally do not cover.
 
-See `../ADVISOR_EXTENSION_RESEARCH.md` for design rationale.
+Failures are fail-open, and that phrase is about **control, not data**. The driver receives a concise normal tool result and continues from local evidence. **No repository data or session context leaves the machine on any failure path** — every gate refuses before a provider is contacted at all. Configuring without an interactive UI is refused rather than defaulted, so the provider disclosure is never skipped. The path filter denies on every resolution error except `ENOENT`. Raw advisor reasoning, raw provider responses, and raw read output are not persisted.
+
+## How to test it
+
+From the repository root:
+
+```bash
+npm run typecheck
+node --test                          # the whole repository
+node --test 'advisor/test/*.test.ts' # this extension only
+npm run lint
+```
+
+`node --test` takes no directory argument — use the glob above for one extension.
+
+Nothing in the suite touches your real `~/.pi`: the agent directory is injected everywhere it is needed, and the fixtures write only into temporary directories. `test/path-policy.test.ts` needs no filesystem at all.
+
+The interactive path cannot be covered by tests. After a change to `/advisor`, sync and reload, then walk it by hand: configure through the wizard and confirm it saves; `/advisor off`, trigger a consultation, confirm the exact disabled text comes back and the driver continues; `/advisor on` and confirm a real consultation returns validated advice.
+
+## Module layout
+
+| Module | Responsibility |
+|---|---|
+| `index.ts` | Wiring only: lifecycle hooks, the command and tool registrations, `pi.exec` for the git root and snapshot |
+| `consultation.ts` | What stops a consultation, and what the driver is told when one is stopped |
+| `slash-command.ts` | What a `/advisor` argument means, and every sentence shown to the user |
+| `model-reference.ts` | The `provider/id` format: one pattern, one parse, one formatter |
+| `config.ts` | Validating, reading and writing `advisor.json` |
+| `contracts.ts` | The advice and configuration schemas, and the advisor's system prompt |
+| `advisor-options.ts` | One thinking level translated into per-API completion options |
+| `context.ts` | The pi-facing shell that gets a session out of pi |
+| `evidence.ts` | What the advisor is shown, assembled from that session |
+| `advisor-loop.ts` | The private read-only loop, and the turn, read and time budgets |
+| `turn-policy.ts` | What one advisor turn may legally do; the private tool list |
+| `path-policy.ts` | Which files may be opened, decided from the path alone |
+| `path-access.ts` | The only part of the filter that touches the filesystem |
+| `repository-tools.ts` | `read`, `grep`, `find`, `ls` |
+| `outbound-text.ts` | Everything that caps or redacts text before it leaves the machine |
+
+## Design notes
+
+The rules this extension is written against, the reasoning behind the module split, and the findings from promoting it to full conformance are in [`../docs/PI_EXTENSIONS_BEST_PRACTICES.md`](../docs/PI_EXTENSIONS_BEST_PRACTICES.md). Rule IDs cited in the module headers (`P1`, `P3`, `S1`, …) refer to that document.
