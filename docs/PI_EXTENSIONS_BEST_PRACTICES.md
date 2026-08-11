@@ -2,7 +2,7 @@
 
 **Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §17 through §20. There is no companion document.
 
-**Scope:** every extension in this repository — `ask-user`, `permission-gate`, `context-footer`, and `advisor` (structural rules apply now, style rules on promotion; see §15).
+**Scope:** every extension in this repository — `ask-user`, `permission-gate`, `context-footer`, and `advisor`. No extension is exempt from any rule area.
 
 ## How to read the rules
 
@@ -258,7 +258,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 No `tsx`, no `vitest`, no bespoke runners. Verified on Node 24: bare `node --test` discovers `**/*.test.ts` and strips types with no flag; a *directory argument* does not work (`node --test test/` fails to resolve); `--experimental-strip-types` is obsolete.
 
 **T2 — MUST: `node --test` at the repository root passes.**
-This is the whole-repo gate. It currently reports **71 passing / 0 failing** across all four extensions. It is green; keep it green. The pre-commit hook (§14) enforces this.
+This is the whole-repo gate. It currently reports **196 passing / 0 failing** across all four extensions. It is green; keep it green. The pre-commit hook (§14) enforces this.
 
 **T3 — SHOULD: cover all core-module decision logic.**
 Validation, policy matching, layout arithmetic, threshold logic, and formatting each get direct tests. Coverage of the shell is not expected.
@@ -463,7 +463,11 @@ Three properties of that check are deliberate:
 
 It is CI-only because it writes a real directory tree to a real temporary `HOME`; that is fine in a disposable runner and wrong in a ~3-second pre-commit hook.
 
-**One thing this section does not cover.** A SonarCloud GitHub App is already attached to this repository and posts a `SonarCloud Code Analysis` check on pushed commits. It is configured app-side — nothing in the tree references it — and it predates this workflow, so "enforcement is the local pre-commit hook" was never quite the whole picture. It is not part of the gate described here: the `checks` job is what this document defines, and no rule in it is asserted by SonarCloud.
+**One thing this section does not cover.** A SonarCloud GitHub App is already attached to this repository and posts a `SonarCloud Code Analysis` check on pushed commits. It is configured app-side — nothing in the tree references it — and it predates this workflow, so "enforcement is the local pre-commit hook" was never quite the whole picture. It is not part of the gate described here: the `checks` job is what this document defines, and no rule in it is asserted by SonarCloud. It currently fails its own quality gate on new code, which is worth knowing but is not this document's problem to solve.
+
+**`npm run format` does not satisfy `npm run lint`.** The hook and CI both run `npm run lint`, which is `biome check` — lint rules *plus* the `organizeImports` assist. `npm run format` is `biome format --write`, which does not organize imports, so formatting a file is not enough to make the gate pass. Use `biome check --write .` when the intent is "make it conform". This was invisible while `advisor/` was excluded from Biome and surfaced the moment it was included: twelve import-order errors that no amount of formatting would fix.
+
+**The workflow requires a lockfile, and that requirement was switched off.** GitHub rejected every run of `.github/workflows/ci.yml` with `startup_failure` and zero jobs created, reporting that the workflow must be pinned with `gh actions pin`. Pinning is a real supply-chain control — `actions/checkout@v7` is a mutable ref, and pinning it to a commit is the Actions equivalent of C2's argument for committing the lockfile. It was nevertheless disabled rather than satisfied, deliberately: this is a public repository with one maintainer, CI holds no secrets (`permissions: contents: read`, and `@earendil-works/*` are on the public registry), only first-party `actions/*` are used, and pinning would require `gh` authenticated in an environment that hosts several GitHub accounts, plus a re-pin on every action major bump. Recorded because a future agent finding unpinned actions should read it as a decision, not an oversight — and because the earlier diagnosis of the same symptom was wrong: zero workflow runs was read as "Actions is disabled for the repository", when Actions was enabled the whole time and rejecting the file.
 
 Branch protection on `master` requires the `checks` status. Required checks only bite on pull requests, so pushing straight to `master` makes CI a detector rather than a gate — a deliberate choice, and the CI-level analogue of the `--no-verify` escape hatch this section already accepts by name.
 
@@ -492,6 +496,7 @@ Ratified sequence — one concern per commit, cheapest and lowest-risk first, re
 | 6 | C4 | `biome.json` + one reformat pass | `npm run lint` |
 | 7 | T4 | Fake-`pi` harness tests for `ask-user` and `permission-gate` | tests |
 | 8 | — | `advisor`: drop the obsolete `--experimental-strip-types` flag | tests |
+| 9 | all | `advisor` promoted to full conformance: entrypoint reduced to wiring, 2 defects fixed, 5 test files → 14, Biome adopted | typecheck, tests, lint, manual pi pass |
 
 `validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is covered by the T4 fake-`pi` harnesses, which call every extension's default export under `node --test`.
 
@@ -511,23 +516,27 @@ Assessed against this document as of the current working tree, **after** the §1
 | R1 TypeScript | ✓ | ✓ | ✓ | ✓ |
 | R2 erasable syntax | ✓ | ✓ | ✓ | ✓ |
 | R3 explicit `.ts` imports | ✓ | ✓ | ✓ | ✓ |
-| S1 pure core | ✓ `validation.ts`, `display.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` | ✓ |
+| S1 pure core | ✓ `validation.ts`, `display.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` | ✓ `consultation.ts`, `slash-command.ts`, `turn-policy.ts`, `evidence.ts`, `path-policy.ts`, `outbound-text.ts`, `model-reference.ts` |
 | S3 humble UI | ✓ display construction extracted | ✓ | ✓ fallback search extracted | n/a |
-| F3 parameter count | ✓ `WizardDeps` | ✓ | ✓ | deferred (§15) |
+| F3 parameter count | ✓ `WizardDeps` | ✓ | ✓ | ✓ options objects throughout |
 | A1–A11 agent contract | ✓ reference implementation | n/a (no tool) | n/a | ✓ |
 | E1–E7 lifecycle | ✓ stateless per call | ✓ | ✓ generation guard | ✓ |
-| P1–P6 safety | n/a | ✓ reference implementation | n/a | n/a |
+| P1–P6 safety | n/a | ✓ reference implementation | n/a | ✓ path filter + redaction (P5 n/a: no approval cache) |
 | U5 key hints | ✓ derived from the keybindings manager | n/a (built-in dialog) | n/a | n/a |
 | T1 `node --test` | ✓ | ✓ | ✓ | ✓ |
 | T4 entrypoint harness test | ✓ | ✓ | ✓ reference implementation | ✓ |
 | T9 typechecked | ✓ | ✓ | ✓ | ✓ |
 | C2 pinned pi version | ✓ root `package.json` at `0.84.1` | ✓ | ✓ | ✓ |
-| C4 formatting | ✓ | ✓ | ✓ | deferred (§15) |
+| C4 formatting | ✓ | ✓ | ✓ | ✓ |
 | D1–D5 comments | ✓ | ✓ reference implementation | ✓ | ✓ |
 
-Whole-repo state: `npm run typecheck` clean, `node --test` **71 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
+Whole-repo state: `npm run typecheck` clean, `node --test` **196 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
 
-The two `advisor` rows marked *deferred* are deliberate, not outstanding: `advisor` is bound by the structural rules and meets all of them; its style pass waits until the extension is promoted to production-ready, so reformat noise stays out of the in-flight feature diff. `advisor/` is excluded from the Biome formatter and linter until then.
+Two of `advisor`'s `P` cells need a sentence rather than a tick. **`P2` is satisfied, not violated**, despite the README describing failures as fail-open: `/advisor` refuses to configure without an interactive UI, so the provider disclosure can never be skipped; the path filter denies on every resolution error except `ENOENT`; and "fail-open" refers only to returning control to the driver. **No repository data or session context leaves the machine on any failure path** — every gate refuses before a provider is contacted at all. **`P5` is genuinely `n/a`**: `advisor` caches no approvals, so there is no approval scope to get wrong.
+
+One pre-existing limitation is recorded here because it was undocumented until the promotion: a model whose id contains a slash — Vertex's `publishers/google/…` — cannot be configured at all, because a stored model reference must match `provider/id` with exactly one slash. Widening the pattern is a behaviour change (§19) and was left alone.
+
+`advisor` no longer has deferred rows. Promoting it took sixteen commits, and the measured before and after: the entrypoint went from 158 lines mixing wiring with policy and formatting to wiring only; the extension went from 12 modules to 15; its tests went from 5 files to 14, and the repository suite from 71 passing to 196; two verified defects were fixed; and the Biome exemption was removed. Nothing in `biome.json` is excluded from linting or formatting any more.
 
 No extension was ever a bad citizen — each is the reference implementation for at least one rule area, and the gaps this table used to record were almost entirely *inconsistency between good extensions* rather than defects within any of them. Most of this document propagated what one extension already did best to the others rather than importing outside ideas.
 
@@ -535,6 +544,18 @@ Two things the migration surfaced that no review had:
 
 - Typechecking `permission-gate/core.ts` for the first time revealed that `event.toolName !== "bash"` does **not** narrow pi's `ToolCallEvent` union, because `CustomToolCallEvent.toolName` is a plain `string`. An extension-registered tool named `bash` therefore reaches the gate with an arbitrary payload. This is the strongest evidence for `R1` in the document.
 - Asserting `A4` in a test revealed that three of `ask-user`'s twelve `promptGuidelines` bullets did not name their own tool, despite this table previously recording `A1`–`A11` as `✓`. A rule that nothing asserts drifts.
+
+Five more from promoting `advisor`, in the same register:
+
+- **A rule area marked `n/a` is never re-examined.** `P1`–`P6` sat as `n/a` in this table for the one extension besides `permission-gate` that can cause harm, purely because `advisor` is not a *gate*. It filters paths and redacts secrets before shipping repository text to a third-party provider, so §8 applied in full the whole time — and the two verified defects below were both `P6` violations sitting in that unexamined area. `n/a` is a claim and needs the same scrutiny as `✓`.
+
+- **Case-sensitive matching against a case-insensitive filesystem.** `isProtected` compared canonical path segments against a lowercase catalogue, so a file genuinely named `Credentials.json` was admitted and read, and `additionalProtectedPaths: ["Secrets"]` against an on-disk `secrets/` protected *nothing*. A configured protection that silently fails open is worse than an absent one, because it reads as configured. The related requested-casing hole was closed only by an undocumented accident: `realpath` from `node:fs/promises` folds filename case where `fs.realpathSync` does not (§17), so a security property rested on which import someone happened to choose.
+
+- **A test that passes for the wrong reason asserts nothing.** 35 lines covering 2 of 15 catalogue entries was recorded as `✓` — coverage of a catalogue has to be **counted**, and a meta-test now fails if any entry lacks both a positive and a near-miss negative case (`P4`). Worse, `displayPath`'s only assertion, `/data\.txt:2:needle/`, passed through a *fallback* branch: the root was non-canonical, so every result was reduced to a bare filename, and the assertion matched that just as happily as the intended `src/data.txt`. The intended code path had never executed. Anchor assertions that are meant to pin a path, or they pin nothing.
+
+- **For an ordering property, one sample is never enough.** The assertion that evidence is redacted *before* the byte cap passed under the reversed ordering too, because a single sample sits inside the head or the tail intact. The failure is alignment-specific and precise: a secret straddling the cut leaves `sk_` plus fifteen characters, one short of the redactor's sixteen-character threshold, so the fragment goes unmatched and would be shipped. Sweep the boundary; do not sample it.
+
+- **Verify the mutation applied before concluding a test is insensitive.** Every commit in the promotion was mutation-tested before its green run was trusted, and two apparent gaps turned out to be a quoting bug in the mutation script while two others were semantically inert mutations. A mutation that never applied and a mutation that cannot change behaviour both look exactly like coverage. The runner now reports *never applied* as a third outcome, and inert controls are included deliberately to confirm it reports real escapes.
 
 ---
 
@@ -552,6 +573,7 @@ Every rule resting on a claim about the toolchain was measured, not assumed. Rec
 | `moduleResolution: NodeNext` catches extensionless imports | C3 baseline against `context-footer` as-is | Exactly 3 errors, all `TS2835`, nothing else — the baseline is minimal | C3 → R3 |
 | The prescribed R3 fix works end to end | Add `.ts` to 3 imports, then C3 typecheck + bare `node --test` | Typecheck clean; 10/10 tests pass with no flags and no `tsx` | R3, T1 |
 | `--experimental-strip-types` is obsolete | `node --test ask-user/validation.test.ts ask-user/option-layout.test.ts` | 16/16 pass with no flag | T1 |
+| **`fs/promises.realpath` folds filename case; `fs.realpathSync` does not** | Wrote `Credentials.json`, then resolved the path `credentials.json` with both | Promises API returns the on-disk `Credentials.json`; the sync API echoes the requested `credentials.json` back | `P6` |
 | A bare directory argument does not work | `node --test advisor/test` | Fails to resolve; bare `node --test` and a quoted glob both work | T1 |
 | pi discovers only two extension shapes | pi `docs/extensions.md`, "Extension Locations" | `*.ts` and `*/index.ts`, per scope | L1 |
 | Installed runtime version | `pi --version` | `0.84.1` | C2 |

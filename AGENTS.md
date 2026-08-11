@@ -12,8 +12,8 @@ standard and is cited by ID (`L1`, `A5`, `C3`, …) — cite those IDs in commit
 review notes too. Check §18 before re-litigating a decision, and §19 before adding something
 the standard deliberately leaves out.
 
-The repository is in full conformance today (§16). The one deliberate exception is `advisor`
-— see below.
+The repository is in full conformance today (§16), with no exemptions: every extension is
+bound by every rule area, and nothing is excluded from Biome.
 
 ## Repository role
 
@@ -103,7 +103,7 @@ how to do something, copy the extension that already does it best. Each has its 
 | `ask-user/` | `ask_user` — a TUI-only clarification tool | the agent-facing contract, `A1`–`A11` |
 | `permission-gate/` | prompts before dangerous `bash` commands | policy engineering, `P1`–`P6` |
 | `context-footer/` | two-row TUI footer with token-based context thresholds | testability — `T4`, `E3`, `T5` |
-| `advisor/` | read-only technical advisor exposing `consult_advisor({})` | — (in flight) |
+| `advisor/` | read-only technical advisor exposing `consult_advisor({})` | outbound data safety, `P1`–`P6`; `S1` at scale |
 
 Two need extra care:
 
