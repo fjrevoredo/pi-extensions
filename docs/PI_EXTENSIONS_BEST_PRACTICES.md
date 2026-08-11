@@ -12,9 +12,11 @@
 | **SHOULD** | The default, resolved by judgement in review. Deviating requires a one-line comment in the code saying why. |
 | **MAY** | Explicitly your call; no justification needed either way. |
 
+**These rules were derived from what this repository already did, not imported.** Most of the document propagates what one extension does best to the others; no extension here was ever a bad citizen, and the gaps that produced these rules were almost entirely *inconsistency between good extensions* rather than defects within any of them. So when a rule looks arbitrary, the reference implementation named beside it is the argument — read that code before proposing a different rule.
+
 Strength is assigned by **enforceability**, not by importance. Some of the most important rules here are SHOULD — `S1` in particular — because nothing can verify them automatically. A MUST that nothing checks is just a SHOULD that devalues the real MUSTs.
 
-Of 86 rules: **31 MUST, 54 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
+Of 87 rules: **31 MUST, 55 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
 
 ---
 
@@ -63,6 +65,8 @@ Verify with `bash sync-extensions.sh --dry-run` rather than reasoning about the 
 
 **R1 — MUST: TypeScript (`.ts`) for all extension code.**
 No `.mjs` with JSDoc typedefs. pi loads extensions through [jiti](https://github.com/unjs/jiti), so TypeScript needs no build step, and JSDoc types are strictly weaker: they are checked by nothing unless a `tsconfig.json` covers the file, and they cannot express the discriminated unions this codebase relies on.
+
+The strongest evidence for this rule came from typechecking `permission-gate/core.ts` for the first time: `event.toolName !== "bash"` does **not** narrow pi's `ToolCallEvent` union, because `CustomToolCallEvent.toolName` is a plain `string`. An extension-registered tool named `bash` therefore reaches the gate with an arbitrary payload — a safety-relevant hole in the one extension that most needs typechecking, invisible to any amount of JSDoc.
 
 **R2 — MUST: erasable syntax only.**
 No parameter properties, `enum`, `namespace`/`module`, `import =`, `export =`. This matches upstream pi-mono's own rule and is a hard requirement for Node's native type stripping, which is strip-only:
@@ -169,7 +173,7 @@ The tool schema and prompt text are the extension's real public API — the mode
 Use discriminated unions with `additionalProperties: false` per branch rather than optional fields that are conditionally required. `AskUserOptionSchema`'s select/freeText split is the reference implementation.
 
 **A4 — SHOULD: every `promptGuidelines` bullet names its own tool.**
-Bullets are appended flat into the shared `Guidelines` section with no grouping, so "Use this tool when…" is unresolvable. Write "Use `ask_user` when…".
+Bullets are appended flat into the shared `Guidelines` section with no grouping, so "Use this tool when…" is unresolvable. Write "Use `ask_user` when…". Assert it: the first test to check this found three of `ask-user`'s twelve bullets naming no tool at all, in the extension that is the reference implementation for this whole section.
 
 **A5 — MUST: validation failures the model can fix are returned as normal tool results, not thrown.**
 Throwing sets `isError: true` and is reserved for genuine execution failures. The result text must state what was wrong *and* show the correct shape — `optionShapeError()`, which prints the offending field, the reason, and both valid option shapes, is the standard.
@@ -215,19 +219,27 @@ Keep a monotonically increasing generation counter, capture it when the async wo
 
 Every rule here is MUST: these are the extensions that can cause harm.
 
+**This section binds more extensions than the obvious one.** "Can cause harm" is not "is a gate" — anything that reads repository files, ships text off the machine, or decides what a caller may touch is in scope, whatever it is called. `advisor` is the worked example: it is not a gate, so this section read as inapplicable to it, and two verified `P6` defects sat in that unexamined area the whole time. **Judging a rule area inapplicable is a claim, and it needs the same scrutiny as claiming to satisfy it** — with the extra hazard that nobody ever re-examines an area written off as not applying.
+
 **P1 — MUST: state the security posture in the file header.**
 `permission-gate` gets this right: *"It is a guardrail, not a security boundary or shell parser."* Any extension that gates, filters, or sandboxes must make the same claim explicitly. This is not defensive phrasing — pi's own `docs/security.md` states that pi "does not include a built-in sandbox" and that "extensions are TypeScript modules that run with the same permissions" as the user. An in-process gate cannot be anything but a guardrail.
 
 **P2 — MUST: fail closed without a UI.** If a gating extension cannot prompt (`!ctx.hasUI`), it blocks and says why.
 
+The contract this buys is worth stating as a contract, because "fail-open" in a README can otherwise be read as violating it. For `advisor`: `/advisor` refuses to configure without an interactive UI, so the provider disclosure can never be skipped; the path filter denies on every resolution error except `ENOENT`; and "fail-open" refers *only* to returning control to the driver. **No repository data or session context leaves the machine on any failure path** — every gate refuses before a provider is contacted at all. State the equivalent sentence for any extension whose failure mode looks permissive from outside.
+
 **P3 — MUST: keep policy data ordered, commented, and in one module.**
 First-match-wins ordering is behaviour, not formatting. Document the ordering policy at the top of the catalogue (broad markers like `sudo` last, so they don't mask the more useful specific reason) and record deliberate non-coverage next to the rule.
 
-**P4 — MUST: every policy rule has at least one positive and one negative test case.** The negative cases are what prevent false-positive creep — `echo "DELETE FROM users"` → no match, `chmod 1777` → no match.
+**P4 — MUST: every policy rule has at least one positive and one negative test case.** The negative cases are what prevent false-positive creep — `echo "DELETE FROM users"` → no match, `chmod 1777` → no match. Prefer a **near-miss** negative: a case that differs from the positive in exactly the dimension the rule discriminates on.
 
-**P5 — MUST: narrow approval/caching keys.** Bind to the specific normalized input *and* the matched rule, never to a category.
+**Coverage of a catalogue has to be counted, not judged.** A 35-line test file covering 2 of 15 entries reads as coverage to a reviewer and was recorded as satisfied. Assert the count mechanically (T8) rather than confirming it by eye.
+
+**P5 — MUST: narrow approval/caching keys.** Bind to the specific normalized input *and* the matched rule, never to a category. An extension that caches no approvals has no approval scope to get wrong — say so in its header, so the absence reads as a design property rather than as an area nobody looked at (§8).
 
 **P6 — MUST: normalize before matching and before keying**, using the same normalizer for both.
+
+Case is part of normalization on a case-insensitive filesystem. `advisor`'s `isProtected` compared canonical path segments against a lowercase catalogue, so a file genuinely named `Credentials.json` was admitted and read, and `additionalProtectedPaths: ["Secrets"]` against an on-disk `secrets/` protected *nothing*. **A configured protection that silently fails open is worse than an absent one, because it reads as configured.** The related requested-casing hole was closed only by an undocumented accident — `realpath` from `node:fs/promises` folds filename case where `fs.realpathSync` does not (§17) — so a security property rested on which import someone happened to choose. Normalize deliberately; do not inherit the behaviour of whichever API is in reach.
 
 ---
 
@@ -273,12 +285,21 @@ Validation, policy matching, layout arithmetic, threshold logic, and formatting 
 
 **T7 — SHOULD: keep tests hermetic.** No network, no git, no real filesystem writes, no `~`. Inject fakes.
 
-**T8 — SHOULD: use table-driven tests for rule catalogues**, each row `{ input, expectedRuleId }`, including `null` expectations (P4).
+**T8 — SHOULD: use table-driven tests for rule catalogues**, each row `{ input, expectedRuleId }`, including `null` expectations (P4). Add a **meta-test over the table**: iterate the catalogue itself and fail if any entry lacks both a positive and a near-miss negative case. That is what turns P4 from a rule someone confirms into a rule that cannot silently lapse when an entry is added.
 
 **T9 — MUST: `npm run typecheck` passes, and every extension file is covered by a `tsconfig.json`.**
+Bringing previously-unchecked code under `tsc` is **diagnostic, not merely corrective**: it surfaces findings, not just errors. Do it early on anything newly covered, and read what it reports as evidence about the code rather than as a list of things to silence — `R1`'s `ToolCallEvent` narrowing gap is what the first typecheck of `permission-gate/core.ts` found.
 Today the `ask-user` and `permission-gate` trees — 2,211 lines, including the most intricate code in the repo — are covered by no `tsconfig.json` at all and are never typechecked. `context-footer` is the only extension that is.
 
-**T10 — SHOULD: verify interactive flows manually in pi** after `sync-extensions.sh` + `/reload`. Automated tests do not replace this for TUI extensions; they reduce how often it has to be exhaustive.
+**T10 — SHOULD: verify interactive flows manually in pi** after `sync-extensions.sh` + `/reload`. Automated tests do not replace this for TUI extensions; they reduce how often it has to be exhaustive. **Batch these checks.** Syncing a half-finished tree into the live runtime directory once per commit is a real risk for no benefit; a checkpoint after a milestone and one at the end is enough, while every automated check still runs per commit.
+
+**T11 — SHOULD: prove a test can fail before trusting it green.**
+A test is evidence only once you have seen it react. Four ways one can be green and assert nothing, each of which has already happened here:
+
+- **Verify moved logic against the pre-move implementation, not against its tests.** When a refactor relocates logic, recover the original from git and run it side by side with the new one over generated inputs. Tests that moved with the code cannot detect a change they were rewritten around; this is what makes "no behaviour change" a claim rather than a hope, and it is cheap.
+- **Sweep a bounded or ordered property; do not sample it.** One sample passes under the wrong order too. An assertion that evidence is redacted *before* the byte cap held under the reversed ordering, because a single sample sits inside the head or the tail intact — the failure is alignment-specific, and only a boundary sweep finds it.
+- **When mutating to check sensitivity, confirm the mutation applied.** A mutation that never applied and a mutation that cannot change behaviour both look exactly like coverage. Report *never applied* as a third outcome alongside caught and escaped, and include a deliberately inert control to confirm the runner reports real escapes.
+- **Anchor an assertion meant to pin a path**, or it matches the broken output just as happily. `displayPath`'s only assertion, `/data\.txt:2:needle/`, passed through a *fallback* branch that reduced every result to a bare filename; the intended code path had never executed.
 
 ---
 
@@ -379,7 +400,9 @@ Three things the installed Biome (2.5.7) forces, which the snippet above predate
 - Exclusions go in `files.includes` with `!`-prefixed entries (Biome 2.x), not `files.ignore` (1.x). Check the installed Biome's own schema before writing them.
 - **`biome.json` cannot carry comments** — only `biome.jsonc` can. Adding one silently invalidates the config, at which point Biome falls back to its defaults and starts checking directories you meant to exclude. Rationale for a disabled rule therefore belongs in `AGENTS.md`, not inline.
 
-Two `recommended` rules are turned off in this repo, both deliberately: `noExplicitAny` for test files only, via an `overrides` block matching `**/test/**` and `**/*.test.ts` (R6 already permits it in fakes), and `noNonNullAssertion` repo-wide (Biome's only offered fix is `?.`, which it marks *unsafe* because it short-circuits where the assertion would throw — applying it would be a behaviour change).
+**Nothing is excluded.** `biome.json` carries no path exemption for any extension: an extension exempted from formatting stops being comparable to the others, and the exemption outlives the reason for it. Two `recommended` rules are turned off in this repo, both deliberately: `noExplicitAny` for test files only, via an `overrides` block matching `**/test/**` and `**/*.test.ts` (R6 already permits it in fakes), and `noNonNullAssertion` repo-wide (Biome's only offered fix is `?.`, which it marks *unsafe* because it short-circuits where the assertion would throw — applying it would be a behaviour change).
+
+**Reformat last.** Layout and language changes land before a formatting pass, or files get reformatted twice and the diffs become unreviewable. The pass must come after the last file has *moved*, not merely after the last file has been edited — a rename after the reformat drags the whole file through the diff again.
 
 To suppress a single genuine finding in place, `// biome-ignore <rule>: <reason>` **must be the last comment line directly above the offending line**. Additional explanatory `//` lines go *above* the directive, never between it and the code — a directive separated from its target silently does nothing, and the finding stays.
 
@@ -426,6 +449,8 @@ Steps 1–3 are also run by the pre-commit hook (§14) and by CI, so in practice
 ## 14. Enforcement
 
 Enforcement is two layers: a **local pre-commit hook** for speed, and **CI** for coverage. The reason either exists rather than relying on the §13 checklist is that agents are the main contributors here, and a checklist in a document is advisory to them while a hook is not. This repository drifted three separate ways (two pi versions, two indent styles, three test conventions) under a human-protocol regime.
+
+**A rule that nothing asserts drifts.** That is this repository's own finding, twice measured, and it is the doctrine the rest of this section applies: `A4` was recorded as satisfied while three `promptGuidelines` bullets named no tool, and `P4` while a catalogue test covered 2 of 15 entries. Both were rules a human had confirmed by reading. Whenever a rule can be turned into an assertion — a test, a hygiene check, a parity check — the assertion is worth more than the confirmation, because only one of the two survives the next change.
 
 ### Layer 1 — the pre-commit hook
 
@@ -612,6 +637,8 @@ Recorded so these are not re-litigated. Only the decisions where the alternative
 **`validate.mjs` retired with no replacement (§15 step 5).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by the T4 fake-`pi` harnesses.
 
 The second half of that claim originally read "extension load by `pi --list-models` in §13", and was wrong: `pi --list-models` exits 0 against a deliberately broken extension (§17). The decision to retire `validate.mjs` still stands — the T4 harnesses are a strictly stronger load gate than either — but it stood on one correct reason, not two.
+
+**`advisor` cannot configure a model whose id contains a slash.** A stored model reference must match `provider/id` with exactly one slash, so Vertex's `publishers/google/…` ids cannot be entered at all. Widening the pattern is a behaviour change (§19) and was left alone: the pattern is what keeps the parse total, the affected ids are one provider's, and no one has needed them. Recorded because the limitation was undocumented for a long time and reads like an oversight — a future agent should reopen it as a decision, not patch the regex.
 
 **MUST assigned by enforceability, not importance (§"How to read the rules").** An earlier draft made 76% of rules MUST with zero MAY. Recalibrated so MUST means "the hook checks it, or breaking it fails at runtime". The visible cost is that `S1` — the principle this whole document derives from — is a SHOULD. That is stated openly rather than papered over, because a MUST nothing verifies devalues the ones that are real. `A1` and `A8` are MUST despite looking stylistic: `Type.Union` is a genuine runtime failure on Google's API, and non-sequential tools race.
 

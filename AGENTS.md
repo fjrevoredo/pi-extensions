@@ -45,7 +45,9 @@ you have no hook.** The hook is a ~3-second local convenience; CI is what always
 
 ## Working in this repo
 
-- One concern per commit, citing the rule IDs it satisfies.
+- One concern per commit, citing the rule IDs it satisfies. Sequence a multi-commit change
+  cheapest and lowest-risk first, and reformat last so no file is touched twice. Every step
+  should be independently revertible: stopping part-way must leave the repo consistent.
 - Bring code into conformance as you touch it. Do not let a new file match old habits.
 - The hook **and CI** are the enforcement, not good intentions. If a check blocks you, fix the
   code — do not weaken the rule. `--no-verify` is for deliberate WIP commits only, and it
