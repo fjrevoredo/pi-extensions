@@ -29,6 +29,10 @@ async function fixture() {
 	await writeFile(join(root, "notadir.txt"), "x");
 	await mkdir(join(root, "private"));
 	await writeFile(join(root, "private", "notes.md"), "NOPE");
+	await writeFile(join(root, "Credentials.json"), "NOPE");
+	await writeFile(join(root, "Auth.JSON"), "NOPE");
+	await mkdir(join(root, "Secrets"));
+	await writeFile(join(root, "Secrets", "notes.md"), "NOPE");
 	await symlink("/etc", join(root, "escape"));
 	await symlink(join(root, "src", "safe.txt"), join(root, "inside-link.txt"));
 	await symlink(join(root, ".env"), join(root, "env-link"));
@@ -66,6 +70,35 @@ test("rejects traversal, protected names, and configured additions (T6)", async 
 			`${requested} should be denied`,
 		);
 	}
+});
+
+test("denies a file that is genuinely named with capitals on disk (P6)", async () => {
+	const { root, policy } = await fixture();
+	// These exist under exactly these names — realpath returns the capitals, so
+	// there is no canonicalization to lean on and the filter itself has to fold
+	// case. Before A9 both were admitted and read.
+	for (const requested of ["Credentials.json", "Auth.JSON"]) {
+		assert.deepEqual(
+			await resolveAllowedPath(policy, requested),
+			{ error: PROTECTED_OR_OUTSIDE_ERROR },
+			`${requested} should be denied`,
+		);
+	}
+	// Nothing in the catalogue mentions "Secrets", so this policy reads it — the
+	// fix folds case, it does not add names.
+	assert.ok((await resolveAllowedPath(policy, join("Secrets", "notes.md"))).path);
+	// Configure it in any casing and the on-disk directory is protected in any
+	// casing. Before A9 this pairing silently protected nothing.
+	for (const configuredAs of ["Secrets", "SECRETS", "secrets", "SeCrEtS"]) {
+		const configured = createPathPolicy({ root, agentDirectory, additionalProtectedPaths: [configuredAs] });
+		assert.deepEqual(
+			await resolveAllowedPath(configured, join("Secrets", "notes.md")),
+			{ error: PROTECTED_OR_OUTSIDE_ERROR },
+			`additionalProtectedPaths: ["${configuredAs}"] should protect the on-disk Secrets/`,
+		);
+	}
+	// And folding did not make the filter fuzzy: an ordinary file is still read.
+	assert.ok((await resolveAllowedPath(policy, join("src", "safe.txt"))).path);
 });
 
 test("follows symlinks before deciding, so a link out of the root is rejected", async () => {

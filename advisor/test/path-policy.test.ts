@@ -130,27 +130,27 @@ const TABLE: Row[] = [
 	{ path: "private/notes.md", expected: true, covers: "additions", additions: ["private"] },
 	{ path: "public/notes.md", expected: false, covers: "additions", additions: ["private"] },
 
-	// ---- DEFECT ROWS (A9). Each asserts today's wrong answer so the fix reads as
-	// a behaviour diff. `isProtected` compares segments case-sensitively against a
-	// lowercase catalogue, so a real file with capitals is admitted and read.
-	{
-		path: "Credentials.json",
-		expected: false,
-		covers: "case",
-		defect: "A9 flips to true: a real Credentials.json is currently admitted",
-	},
-	{ path: ".ENV", expected: false, covers: "case", defect: "A9 flips to true" },
-	{ path: ".Env.local", expected: false, covers: "case", defect: "A9 flips to true" },
-	{ path: "AUTH.JSON", expected: false, covers: "case", defect: "A9 flips to true" },
-	{ path: ".Git/config", expected: false, covers: "case", defect: "A9 flips to true" },
-	{ path: ".SSH/id_rsa", expected: false, covers: "case", defect: "A9 flips to true" },
-	{
-		path: "secrets/notes.md",
-		expected: false,
-		covers: "case",
-		additions: ["Secrets"],
-		defect: "A9 flips to true: a mixed-case additionalProtectedPaths entry currently protects nothing",
-	},
+	// ---- Case folding (A9). These rows were pinned at `false` by A8 to record the
+	// defect; the fix flips them. On a case-insensitive filesystem each of these
+	// names the same file as its lowercase spelling, so admitting them was a hole.
+	{ path: "Credentials.json", expected: true, covers: "case" },
+	{ path: ".ENV", expected: true, covers: "case" },
+	{ path: ".Env.local", expected: true, covers: "case" },
+	{ path: "AUTH.JSON", expected: true, covers: "case" },
+	{ path: ".Git/config", expected: true, covers: "case" },
+	{ path: ".SSH/id_rsa", expected: true, covers: "case" },
+	// A configured protection that silently protected nothing, which is worse than
+	// no protection because it reads as configured.
+	{ path: "secrets/notes.md", expected: true, covers: "case", additions: ["Secrets"] },
+	{ path: "SECRETS/notes.md", expected: true, covers: "case", additions: ["Secrets"] },
+	{ path: "secrets/notes.md", expected: true, covers: "case", additions: ["SeCrEtS"] },
+	// Folding must not turn the near misses into matches: case-insensitive is not
+	// the same as fuzzy, and every negative row above still has to hold.
+	{ path: ".GITIGNORE", expected: false, covers: "case" },
+	{ path: "OAUTH.JSON", expected: false, covers: "case" },
+	{ path: "Credentials.YAML", expected: false, covers: "case" },
+	{ path: "KEY.PEM.TXT", expected: false, covers: "case" },
+	{ path: ".ENVRC", expected: false, covers: "case" },
 ];
 
 test("isProtected matches the catalogue per path segment, positives and near misses", () => {

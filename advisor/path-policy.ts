@@ -41,20 +41,41 @@ export function isWithin(root: string, candidate: string): boolean {
 	return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
 }
 
+/**
+ * Matching is case-insensitive because the filesystems this runs on are. macOS
+ * and Windows both resolve `Credentials.json` and `credentials.json` to the same
+ * file, so comparing segments case-sensitively against a lowercase catalogue let
+ * a real file with capitals through — and made a mixed-case
+ * `additionalProtectedPaths` entry protect nothing at all, which is worse than
+ * useless because it looks configured.
+ *
+ * Folding case can only ever widen denial, never narrow it: the catalogue is
+ * lowercase, so every segment that matched before still matches. The catalogue
+ * and the configured additions are folded too, so an entry added in mixed case
+ * cannot silently stop working.
+ *
+ * This is fixed here rather than by canonicalizing the requested path's case.
+ * `realpath.native` would do that, and it was rejected deliberately: it would
+ * rewrite the casing of every path the advisor is shown, so results would stop
+ * matching what the driver and the user see. The filter should be
+ * case-insensitive; the output should not be case-normalized.
+ */
 export function isProtected(root: string, target: string, additions: string[]): boolean {
 	const rel = relative(root, target).split(sep).filter(Boolean);
 	if (rel.length === 0) return false;
 	const configured = new Set([
-		...DEFAULT_PROTECTED,
-		...additions.map((value) => value.replaceAll("\\", "/").split("/")[0]),
+		...DEFAULT_PROTECTED.map((value) => value.toLowerCase()),
+		...additions.map((value) => value.replaceAll("\\", "/").split("/")[0].toLowerCase()),
 	]);
-	return rel.some(
-		(part) =>
+	return rel.some((segment) => {
+		const part = segment.toLowerCase();
+		return (
 			part === ".env" ||
 			part.startsWith(".env.") ||
 			configured.has(part) ||
-			PROTECTED_SUFFIXES.some((suffix) => part.toLowerCase().endsWith(suffix)),
-	);
+			PROTECTED_SUFFIXES.some((suffix) => part.endsWith(suffix))
+		);
+	});
 }
 
 /**
