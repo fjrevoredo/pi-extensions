@@ -25,7 +25,7 @@
  * Known limitation, deliberately not fixed here: the byte-wise caps can split a
  * multi-byte UTF-8 sequence, which surfaces as U+FFFD in the output. It is
  * pre-existing, it degrades a character rather than leaking anything, and
- * changing it would be a behaviour change (§19).
+ * changing it would be a behaviour change (§17).
  */
 
 /** Byte and line caps for one repository tool result. */

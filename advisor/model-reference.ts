@@ -44,7 +44,7 @@ export function modelName(model: ModelReference): string {
  * The consequence is a real if separate limitation: a provider whose ids contain
  * slashes (Vertex's `publishers/google/…`) cannot be stored as an advisor model
  * at all, because the pattern rejects the reference before the parse is reached.
- * Pre-existing, and widening the pattern is a behaviour change (§19).
+ * Pre-existing, and widening the pattern is a behaviour change (§17).
  */
 export function parseModel(value: string): [string, string] | undefined {
 	const slash = value.indexOf("/");

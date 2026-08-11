@@ -9,7 +9,7 @@ Read it before changing any extension. It is not advisory.
 It is deliberately **not summarised here.** This file covers only how to *work* in this repo:
 the runtime model, the setup, and what lives where. Anything that is a rule lives in the
 standard and is cited by ID (`L1`, `A5`, `C3`, …) — cite those IDs in commit messages and
-review notes too. Check §18 before re-litigating a decision, and §19 before adding something
+review notes too. Check §16 before re-litigating a decision, and §17 before adding something
 the standard deliberately leaves out.
 
 There are no exemptions. Every extension is bound by every rule area — being small, being
@@ -90,7 +90,7 @@ extensions (`T10`). The first three commands are the pre-commit hook, so in prac
 last two are manual.
 
 `pi --list-models` is deliberately **not** in this list. It exits 0 against an extension that
-cannot be imported at all (§17), so it never was the load check it looked like. `node --test`
+cannot be imported at all (§15), so it never was the load check it looked like. `node --test`
 is: the T4 harnesses call every extension's default export. Load errors that only appear in a
 real session show up at `/reload`, which is another reason that step is not optional.
 

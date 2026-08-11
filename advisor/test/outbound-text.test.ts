@@ -64,7 +64,7 @@ test("truncateMiddle keeps the head and the tail and marks the gap", () => {
 });
 
 test("truncateMiddle can split a multi-byte character — a known, accepted limitation", () => {
-	// Pinned rather than fixed (§19): the caps are byte-wise, so a cut can land
+	// Pinned rather than fixed (§17): the caps are byte-wise, so a cut can land
 	// mid-sequence and surface as U+FFFD. It degrades one character and leaks
 	// nothing, and changing it would be a behaviour change.
 	const split = truncateMiddle("€".repeat(20), 10, REGION_TRUNCATION_MARKER);

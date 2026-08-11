@@ -1,6 +1,6 @@
 # pi Extension Best Practices
 
-**Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §17 through §20. There is no companion document.
+**Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §15 through §18. There is no companion document.
 
 **Scope:** every extension in this repository — `ask-user`, `permission-gate`, `context-footer`, and `advisor`. No extension is exempt from any rule area.
 
@@ -55,7 +55,7 @@ Three exclusion mechanics that are easy to get wrong, all of which have already 
 
 - **Glob, not literal.** `tsconfig.json` as an exclusion does *not* cover `tsconfig.base.json`. Use `tsconfig*.json`.
 - **Anchor root-only exclusions with a leading slash.** `/package.json` excludes the root manifest while still letting a future extension that genuinely needs a runtime `package.json` carry its own. An unanchored `package.json` would silently strip that too.
-- **A pattern containing a slash matches the path *tail*, not the transfer root** — unless it carries a leading `/`. So `--exclude '*/test/'` drops `a/test/` at *any* depth but never a `test/` directory at the repository root, which is exactly where an L2 root-level single-file extension would keep its tests. A bare `--exclude 'test/'` matches the final component anywhere and is the right form for a directory name that should never sync. Measured on both GNU rsync 3.4.3 and macOS openrsync, which agree (§17).
+- **A pattern containing a slash matches the path *tail*, not the transfer root** — unless it carries a leading `/`. So `--exclude '*/test/'` drops `a/test/` at *any* depth but never a `test/` directory at the repository root, which is exactly where an L2 root-level single-file extension would keep its tests. A bare `--exclude 'test/'` matches the final component anywhere and is the right form for a directory name that should never sync. Measured on both GNU rsync 3.4.3 and macOS openrsync, which agree (§15).
 
 Verify with `bash sync-extensions.sh --dry-run` rather than reasoning about the patterns (C5). CI now asserts the outcome as well: `.github/scripts/check-runtime-hygiene.sh` syncs into a throwaway `HOME` and checks what actually landed, in both directions (§14).
 
@@ -239,7 +239,7 @@ First-match-wins ordering is behaviour, not formatting. Document the ordering po
 
 **P6 — MUST: normalize before matching and before keying**, using the same normalizer for both.
 
-Case is part of normalization on a case-insensitive filesystem. `advisor`'s `isProtected` compared canonical path segments against a lowercase catalogue, so a file genuinely named `Credentials.json` was admitted and read, and `additionalProtectedPaths: ["Secrets"]` against an on-disk `secrets/` protected *nothing*. **A configured protection that silently fails open is worse than an absent one, because it reads as configured.** The related requested-casing hole was closed only by an undocumented accident — `realpath` from `node:fs/promises` folds filename case where `fs.realpathSync` does not (§17) — so a security property rested on which import someone happened to choose. Normalize deliberately; do not inherit the behaviour of whichever API is in reach.
+Case is part of normalization on a case-insensitive filesystem. `advisor`'s `isProtected` compared canonical path segments against a lowercase catalogue, so a file genuinely named `Credentials.json` was admitted and read, and `additionalProtectedPaths: ["Secrets"]` against an on-disk `secrets/` protected *nothing*. **A configured protection that silently fails open is worse than an absent one, because it reads as configured.** The related requested-casing hole was closed only by an undocumented accident — `realpath` from `node:fs/promises` folds filename case where `fs.realpathSync` does not (§15) — so a security property rested on which import someone happened to choose. Normalize deliberately; do not inherit the behaviour of whichever API is in reach.
 
 ---
 
@@ -330,7 +330,7 @@ One `npm install`, one dependency set, one place to bump on a pi upgrade. An ext
 **C2 — MUST: all `@earendil-works/*` packages are pinned to the exact version of the installed `pi` runtime.**
 The installed runtime is **`pi 0.84.1`**, and the single root `package.json` pins every `@earendil-works/*` package to it. Exact pins, no ranges (upstream pi-mono rule). When pi is upgraded: bump the root `package.json`, re-run typecheck and tests, `/reload`, and check the built-in tool list for names that now collide with an extension tool (N1).
 
-**`package-lock.json` is tracked, and `engines.node` is `^24`.** Pinning the seven direct dependencies is not the same as pinning what installs: the transitive tree is two orders of magnitude larger, including native binaries and the whole AWS/Google/OpenAI/Mistral surface `pi-coding-agent` pulls in, and all of it floated on every `npm install` — the drift this rule exists to prevent, one level down. CI installs with `npm ci`, which additionally fails when the manifest and the lock disagree. `engines.node` is `^24` rather than `>=24` deliberately: with `>=`, `setup-node` resolves to the newest Node available and would silently move CI off the runtime every §17 fact was measured against. It is the repository's only machine-readable Node pin; a second one in `.nvmrc` was rejected.
+**`package-lock.json` is tracked, and `engines.node` is `^24`.** Pinning the seven direct dependencies is not the same as pinning what installs: the transitive tree is two orders of magnitude larger, including native binaries and the whole AWS/Google/OpenAI/Mistral surface `pi-coding-agent` pulls in, and all of it floated on every `npm install` — the drift this rule exists to prevent, one level down. CI installs with `npm ci`, which additionally fails when the manifest and the lock disagree. `engines.node` is `^24` rather than `>=24` deliberately: with `>=`, `setup-node` resolves to the newest Node available and would silently move CI off the runtime every §15 fact was measured against. It is the repository's only machine-readable Node pin; a second one in `.nvmrc` was rejected.
 
 **C3 — MUST: each extension has a `tsconfig.json` extending the root `tsconfig.base.json`.**
 
@@ -437,12 +437,12 @@ A change to any extension is complete when all of the following pass:
 2. `node --test` from the repository root — all green. This is also the **extension-load gate**: the T4 fake-`pi` harnesses call every extension's default export, so a module that cannot be imported fails here.
 3. `npm run lint`
 4. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
-5. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions). Watch for load errors here specifically: pi reports them interactively, and no non-interactive pi invocation does (§17).
+5. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions). Watch for load errors here specifically: pi reports them interactively, and no non-interactive pi invocation does (§15).
 6. README/AGENTS updated if the agent-facing or maintainer-facing contract moved
 
 Steps 1–3 are also run by the pre-commit hook (§14) and by CI, so in practice only 4–6 are manual.
 
-`pi --list-models` used to be step 4, on the assumption that it detects an extension that fails to load. It does not — measured in §17 — so it has been removed rather than left in place as a check that reassures without checking.
+`pi --list-models` used to be step 4, on the assumption that it detects an extension that fails to load. It does not — measured in §15 — so it has been removed rather than left in place as a check that reassures without checking.
 
 ---
 
@@ -478,7 +478,7 @@ Measured wall-clock on this repo: ~3 seconds.
 
 **Drift between the two layers is controlled by mechanism, not by discipline.** Neither file defines a command: the hook calls the npm scripts and so does the workflow, so there is nothing in either file to drift. `.github/scripts/check-hook-parity.sh` then asserts that they invoke the same set, because a rule nothing asserts drifts — and the hook had in fact already drifted from the scripts once, calling `node --test` and `npx biome check .` directly.
 
-**`.github/scripts/check-runtime-hygiene.sh` is the strongest argument for CI existing at all.** L7 is a MUST that was previously verified by a human reading a `--dry-run`. `sync-extensions.sh` honours an overridden `HOME` (§17), so the rule became mechanically checkable: sync into a throwaway `HOME`, then assert a **positive** invariant — every surviving file is a non-test `.ts`, no non-runtime directory exists, and every `<ext>/index.ts` in `git ls-files` survived.
+**`.github/scripts/check-runtime-hygiene.sh` is the strongest argument for CI existing at all.** L7 is a MUST that was previously verified by a human reading a `--dry-run`. `sync-extensions.sh` honours an overridden `HOME` (§15), so the rule became mechanically checkable: sync into a throwaway `HOME`, then assert a **positive** invariant — every surviving file is a non-test `.ts`, no non-runtime directory exists, and every `<ext>/index.ts` in `git ls-files` survived.
 
 Three properties of that check are deliberate:
 
@@ -500,7 +500,7 @@ Branch protection on `master` requires the `checks` status. Required checks only
 
 ---
 
-## 17. Verified toolchain facts
+## 15. Verified toolchain facts
 
 Every rule resting on a claim about the toolchain was measured, not assumed. Recorded so no future agent has to re-derive them or is tempted to doubt a rule that looks like mere style. Measured on Node v24.16.0, pi 0.84.1.
 
@@ -534,7 +534,7 @@ Two rules exist *only* because of these measurements:
 
 ---
 
-## 18. Decisions and rejected alternatives
+## 16. Decisions and rejected alternatives
 
 Recorded so these are not re-litigated. Only the decisions where the alternative was genuinely plausible are listed.
 
@@ -550,15 +550,15 @@ Recorded so these are not re-litigated. Only the decisions where the alternative
 
 **`validate.mjs` retired with no replacement (the migration).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by the T4 fake-`pi` harnesses.
 
-The second half of that claim originally read "extension load by `pi --list-models` in §13", and was wrong: `pi --list-models` exits 0 against a deliberately broken extension (§17). The decision to retire `validate.mjs` still stands — the T4 harnesses are a strictly stronger load gate than either — but it stood on one correct reason, not two.
+The second half of that claim originally read "extension load by `pi --list-models` in §13", and was wrong: `pi --list-models` exits 0 against a deliberately broken extension (§15). The decision to retire `validate.mjs` still stands — the T4 harnesses are a strictly stronger load gate than either — but it stood on one correct reason, not two.
 
-**`advisor` cannot configure a model whose id contains a slash.** A stored model reference must match `provider/id` with exactly one slash, so Vertex's `publishers/google/…` ids cannot be entered at all. Widening the pattern is a behaviour change (§19) and was left alone: the pattern is what keeps the parse total, the affected ids are one provider's, and no one has needed them. Recorded because the limitation was undocumented for a long time and reads like an oversight — a future agent should reopen it as a decision, not patch the regex.
+**`advisor` cannot configure a model whose id contains a slash.** A stored model reference must match `provider/id` with exactly one slash, so Vertex's `publishers/google/…` ids cannot be entered at all. Widening the pattern is a behaviour change (§17) and was left alone: the pattern is what keeps the parse total, the affected ids are one provider's, and no one has needed them. Recorded because the limitation was undocumented for a long time and reads like an oversight — a future agent should reopen it as a decision, not patch the regex.
 
 **MUST assigned by enforceability, not importance (§"How to read the rules").** An earlier draft made 76% of rules MUST with zero MAY. Recalibrated so MUST means "the hook checks it, or breaking it fails at runtime". The visible cost is that `S1` — the principle this whole document derives from — is a SHOULD. That is stated openly rather than papered over, because a MUST nothing verifies devalues the ones that are real. `A1` and `A8` are MUST despite looking stylistic: `Type.Union` is a genuine runtime failure on Google's API, and non-sequential tools race.
 
 **A pre-commit hook rather than a checklist alone (§14).** The deciding argument is that agents are the main contributors to this repository, and a document is advisory to an agent while a hook is not. This repo drifted three separate ways under a human-protocol regime.
 
-**CI in addition to the hook, reversing the §19 non-goal.** "No CI" was justified by "enforcement is the local pre-commit hook", and that justification does not survive inspection: `core.hooksPath` is per-clone local config that cannot be committed, so the hook is absent in a fresh clone and in every new agent worktree — absent, that is, exactly where agents work. The second deciding argument is that CI makes **L7 mechanically checkable for the first time**: `sync-extensions.sh` honours an overridden `HOME` (§17), so "nothing reaches the runtime directory except what pi loads" stops being a rule verified by reading a dry-run. A rule this document calls MUST while nothing checks it is the exact failure mode §14's doctrine describes, and this repository has recorded it twice.
+**CI in addition to the hook, reversing the §17 non-goal.** "No CI" was justified by "enforcement is the local pre-commit hook", and that justification does not survive inspection: `core.hooksPath` is per-clone local config that cannot be committed, so the hook is absent in a fresh clone and in every new agent worktree — absent, that is, exactly where agents work. The second deciding argument is that CI makes **L7 mechanically checkable for the first time**: `sync-extensions.sh` honours an overridden `HOME` (§15), so "nothing reaches the runtime directory except what pi loads" stops being a rule verified by reading a dry-run. A rule this document calls MUST while nothing checks it is the exact failure mode §14's doctrine describes, and this repository has recorded it twice.
 
 **Three CI steps rather than CI invoking the hook.** Calling `.githooks/pre-commit` from the workflow would guarantee parity in one line, but `set -euo pipefail` means the first failure hides the other two, and a remote run that reports one problem per push is expensive. Separate steps, each guarded with `!cancelled()`, report all three. Parity is recovered by making both files pure call sites and asserting it (§14).
 
@@ -566,31 +566,31 @@ Rejected, with reasons:
 
 - **Path filters on the triggers.** They make a required status check unsatisfiable on a docs-only pull request, which blocks the merge until someone manually overrides — an absurd trade for three seconds of checks.
 - **An OS matrix.** `advisor/test/path-access.test.ts` calls `symlink()`, which needs privileges on Windows; a macOS runner costs 10× to re-test what the developer's own machine covers on every commit. Useful side effect of the split: local runs exercise macOS openrsync, CI exercises GNU rsync 3.x, and the L7 exclusion list is **observed** to behave identically under both — not merely expected to (§14).
-- **A Node matrix.** See §19 — Node 24's semantics are the test strategy, not a variable.
+- **A Node matrix.** See §17 — Node 24's semantics are the test strategy, not a variable.
 - **`npm audit`.** Every dependency is dev-only, nothing ships, and nothing processes untrusted input. A new advisory would redden CI with no code change, and a gate that fails without a change having been made is a broken gate that trains people to ignore it.
-- **A dependency-update bot.** See §19 — C2 pins to the installed runtime.
+- **A dependency-update bot.** See §17 — C2 pins to the installed runtime.
 - **`biome ci` instead of `biome check`.** It would differ from what the hook runs, reintroducing by hand the drift the call-site design removes.
 - **A status badge.** Not because it would not render — the repository is public, so it would. There is simply no audience: one maintainer, no external contributors, and `README.md` is read by agents working in the clone rather than by anyone deciding whether to trust the build. A badge is a signal to strangers.
-- **Anything that builds, versions, publishes, or deploys.** See §19.
+- **Anything that builds, versions, publishes, or deploys.** See §17.
 
 ---
 
-## 19. Non-goals
+## 17. Non-goals
 
 Deliberately absent. Do not add these without a decision.
 
-**One entry here has been reversed by a recorded decision.** "No CI" was a non-goal and is no longer: CI was added, and the reasoning is in §18 and §14. That is what "do not add these without a decision" asks for — the entry is replaced rather than quietly deleted, so the reversal is visible to whoever reads this list next.
+**One entry here has been reversed by a recorded decision.** "No CI" was a non-goal and is no longer: CI was added, and the reasoning is in §16 and §14. That is what "do not add these without a decision" asks for — the entry is replaced rather than quietly deleted, so the reversal is visible to whoever reads this list next.
 
 - **No coverage percentage target.** T3 covers core decision logic and explicitly not the shell. A global percentage would push toward testing the wiring, which is where the T4 harness already does the useful work.
 - **No release, publish, or deploy pipeline.** These extensions have no build artifact, no version, and one consumer; they are delivered by `rsync`. CI checks the tree and stops there.
-- **No CI matrix.** One OS and one Node major. Node 24's semantics *are* the test strategy here — R2's erasable syntax and R3's explicit extensions exist because of what Node 24 does and does not do (§17) — so a matrix would test configurations the rules are not written for. `ubuntu-latest` only, pinned by `engines.node` at `^24`.
+- **No CI matrix.** One OS and one Node major. Node 24's semantics *are* the test strategy here — R2's erasable syntax and R3's explicit extensions exist because of what Node 24 does and does not do (§15) — so a matrix would test configurations the rules are not written for. `ubuntu-latest` only, pinned by `engines.node` at `^24`.
 - **No dependency-update bot.** C2 requires every `@earendil-works/*` package to move with the *installed* pi runtime, and upgrading pi is a defined procedure (C2, N1), not a version bump. A bot's pull requests would always be closed unmerged.
 - **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs).
 - **No behaviour changes as part of conformance work.** Conformance work moves, renames, and reformats. If a conformance step wants to change what an extension does, that is a separate commit.
 
 ---
 
-## 20. Sources
+## 18. Sources
 
 **pi runtime, shipped with `@earendil-works/pi-coding-agent@0.84.1`.** Authoritative in a way no third-party writing is: it is the contract the runtime implements, at the version installed. The `docs/` and `examples/` paths below are pi's own, not this repository's — read them at `node_modules/@earendil-works/pi-coding-agent/` after `npm install`.
 

@@ -19,7 +19,7 @@ import { type Static, Type } from "typebox";
  * itself; a `not_ready` or `stop` result must recommend something, because
  * otherwise the driver is stopped with nowhere to go.
  *
- * **Changing either schema is a breaking change** (§19). The advice shape is what
+ * **Changing either schema is a breaking change** (§17). The advice shape is what
  * the driver renders and what the session journal stores, and the configuration
  * version is what `validateConfig` refuses to migrate silently.
  */

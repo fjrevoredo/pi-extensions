@@ -99,7 +99,7 @@ export type TurnClassification =
  * name. That check stays in the loop, per call, because the loop executes calls
  * as it walks them: given `[read, bash]` the read runs and is counted before the
  * bash is refused. Hoisting the check here would be tidier and would silently
- * change both the recorded tool count and what the advisor is told (§19).
+ * change both the recorded tool count and what the advisor is told (§17).
  */
 export function classifyTurn(content: readonly unknown[], options: { correctionOnly: boolean }): TurnClassification {
 	const calls = toolCallsIn(content);

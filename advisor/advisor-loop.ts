@@ -76,7 +76,7 @@ interface CompletionRegistry {
  *
  * Calls are executed as they are walked, so a valid read followed by an unknown
  * name leaves the read run and counted. That is pre-existing behaviour and is
- * deliberately preserved (§19); turn-policy.ts explains why it is not hoisted.
+ * deliberately preserved (§17); turn-policy.ts explains why it is not hoisted.
  */
 async function runRepositoryCalls(input: {
 	calls: AdvisorToolCall[];
