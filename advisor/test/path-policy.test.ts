@@ -248,19 +248,18 @@ test("createPathPolicy defaults redaction on and normalizes the root", () => {
 	const base = { root: `${ROOT}/./sub/..`, agentDirectory: "/elsewhere", additionalProtectedPaths: [] };
 	assert.equal(createPathPolicy(base).redactKnownSecrets, true, "redaction is opt-out, not opt-in");
 	assert.equal(createPathPolicy({ ...base, redactKnownSecrets: false }).redactKnownSecrets, false);
-	// DEFECT (A10): the root is only `resolve`d, never `realpath`ed, so a root
-	// reached through a symlink stays non-canonical while every consumer computes
-	// realpath separately. The observable consequence is pinned in
-	// repository-tools.test.ts; here we can only pin that resolve is all it does.
+	// `resolve` is all this pure constructor does — it normalizes . and .. but does
+	// not follow symlinks. That is the documented contract, not an oversight:
+	// canonicalizing needs the filesystem, so createResolvedPathPolicy in
+	// path-access.ts owns it and path-access.test.ts asserts it (P6).
 	assert.equal(createPathPolicy(base).root, ROOT);
 });
 
-test("displayPath falls back to a bare basename outside the root", () => {
+test("displayPath renders paths relative to the root, with a basename backstop", () => {
 	assert.equal(displayPath(ROOT, at("src", "a.ts")), join("src", "a.ts"));
 	assert.equal(displayPath(ROOT, ROOT), ".", "the root renders as . rather than an empty string");
-	// DEFECT (A10) in its most direct form. This fallback exists so a stray path
-	// cannot leak an absolute location into advisor-visible output, but today it
-	// is the *normal* path whenever the root is non-canonical, which silently
-	// reduces every result to a filename.
+	// The backstop keeps an absolute location out of advisor-visible output if a
+	// path ever escapes the root. Before A10 a non-canonical root made this the
+	// normal path rather than the exception, silently dropping every directory.
 	assert.equal(displayPath(ROOT, "/elsewhere/deep/a.ts"), "a.ts");
 });

@@ -3,13 +3,8 @@ import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { resolveAllowedPath } from "../path-access.ts";
-import {
-	createPathPolicy,
-	INACCESSIBLE_ERROR,
-	OUTSIDE_ROOT_ERROR,
-	PROTECTED_OR_OUTSIDE_ERROR,
-} from "../path-policy.ts";
+import { createResolvedPathPolicy, resolveAllowedPath } from "../path-access.ts";
+import { INACCESSIBLE_ERROR, OUTSIDE_ROOT_ERROR, PROTECTED_OR_OUTSIDE_ERROR } from "../path-policy.ts";
 
 /**
  * The filesystem half of the path filter. Everything that can be decided from a
@@ -36,7 +31,7 @@ async function fixture() {
 	await symlink("/etc", join(root, "escape"));
 	await symlink(join(root, "src", "safe.txt"), join(root, "inside-link.txt"));
 	await symlink(join(root, ".env"), join(root, "env-link"));
-	const policy = createPathPolicy({ root, agentDirectory, additionalProtectedPaths: ["private"] });
+	const policy = await createResolvedPathPolicy({ root, agentDirectory, additionalProtectedPaths: ["private"] });
 	return { root, policy };
 }
 
@@ -90,7 +85,11 @@ test("denies a file that is genuinely named with capitals on disk (P6)", async (
 	// Configure it in any casing and the on-disk directory is protected in any
 	// casing. Before A9 this pairing silently protected nothing.
 	for (const configuredAs of ["Secrets", "SECRETS", "secrets", "SeCrEtS"]) {
-		const configured = createPathPolicy({ root, agentDirectory, additionalProtectedPaths: [configuredAs] });
+		const configured = await createResolvedPathPolicy({
+			root,
+			agentDirectory,
+			additionalProtectedPaths: [configuredAs],
+		});
 		assert.deepEqual(
 			await resolveAllowedPath(configured, join("Secrets", "notes.md")),
 			{ error: PROTECTED_OR_OUTSIDE_ERROR },
@@ -136,23 +135,45 @@ test("admits a path that does not exist yet, but not one that only looks accessi
 	assert.deepEqual(await resolveAllowedPath(policy, join("notadir.txt", "child")), { error: INACCESSIBLE_ERROR });
 });
 
-test("resolves through a non-canonical root, which is how every macOS temp root behaves", async () => {
+test("stores one canonical root, whatever spelling it was given (P6)", async () => {
+	// mkdtemp under /var/folders is reached through a symlink on macOS, so a
+	// non-canonical root is the normal case here, not a contrived one. A8 pinned
+	// policy.root as the symlinked spelling; A10 canonicalizes it at construction
+	// so there is only ever one spelling to compare against.
 	const { root, policy } = await fixture();
-	// mkdtemp under /var/folders is reached through a symlink on macOS, so this is
-	// not a contrived case: policy.root is the symlinked spelling while realpath
-	// gives another. resolveAllowedPath canonicalizes the root itself, so
-	// admission is unaffected — the damage lands on displayPath instead (A10).
 	const canonical = await realpath(root);
-	if (root !== canonical) {
-		assert.notEqual(policy.root, canonical, "createPathPolicy stores the non-canonical root today (A10)");
-	}
+	assert.equal(policy.root, canonical, "one normalizer, applied once");
 	const result = await resolveAllowedPath(policy, join("src", "safe.txt"));
-	assert.equal(result.path, join(canonical, "src", "safe.txt"), "admission still works through the symlinked root");
+	assert.equal(result.path, join(canonical, "src", "safe.txt"));
 	assert.deepEqual(await resolveAllowedPath(policy, ".env"), { error: PROTECTED_OR_OUTSIDE_ERROR });
 });
 
+test("protects the agent directory when it sits inside a symlinked root", async () => {
+	// The guard this exercises did not work before A10. It compares the root with
+	// the agent directory, and the root was stored in a different spelling than
+	// the one relative() needed, so an agent directory genuinely inside the repo
+	// was judged outside it and left unprotected.
+	const root = await mkdtemp(join(tmpdir(), "advisor-agentdir-"));
+	await mkdir(join(root, ".pi", "agent"), { recursive: true });
+	await writeFile(join(root, ".pi", "agent", "sessions.json"), "NOPE");
+	const policy = await createResolvedPathPolicy({
+		root,
+		agentDirectory: join(root, ".pi", "agent"),
+		additionalProtectedPaths: [],
+	});
+	assert.ok(policy.additionalProtectedPaths.includes(join(".pi", "agent")), "the guard matched");
+	assert.deepEqual(await resolveAllowedPath(policy, join(".pi", "agent", "sessions.json")), {
+		error: PROTECTED_OR_OUTSIDE_ERROR,
+	});
+	// Reduced to its first segment, so the whole .pi tree is covered, not just the
+	// agent directory the guard happened to name.
+	assert.deepEqual(await resolveAllowedPath(policy, join(".pi", "anything-else")), {
+		error: PROTECTED_OR_OUTSIDE_ERROR,
+	});
+});
+
 test("denies everything when the root itself cannot be resolved", async () => {
-	const policy = createPathPolicy({
+	const policy = await createResolvedPathPolicy({
 		root: join(tmpdir(), "advisor-root-that-does-not-exist"),
 		agentDirectory,
 		additionalProtectedPaths: [],

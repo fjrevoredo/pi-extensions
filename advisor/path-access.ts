@@ -2,9 +2,11 @@ import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import {
 	admits,
+	createPathPolicy,
 	INACCESSIBLE_ERROR,
 	OUTSIDE_ROOT_ERROR,
 	type PathPolicy,
+	type PathPolicyOptions,
 } from "./path-policy.ts";
 
 /**
@@ -17,9 +19,38 @@ import {
  * first admits `link -> /etc`; checking only the second would not reject a
  * traversal that never resolves.
  */
+/**
+ * Canonicalize one path, falling back to `resolve` when it does not exist yet.
+ *
+ * `realpath` comes from `node:fs/promises` rather than `node:fs`, and that is
+ * load-bearing rather than incidental — the promises API canonicalizes filename
+ * case on macOS where the synchronous one does not. A13 records this.
+ */
+async function canonicalize(path: string): Promise<string> {
+	return realpath(path).catch(() => resolve(path));
+}
+
+/**
+ * Build a policy whose root is already canonical.
+ *
+ * This is the constructor callers should use. `createPathPolicy` is pure and so
+ * cannot canonicalize anything itself, which is exactly how the two spellings of
+ * the root drifted apart: it stored `resolve(root)` while every consumer
+ * separately computed `realpath(root)`. P6 wants one normalizer, applied once,
+ * and shared — so it is applied here, at construction, rather than trusted to
+ * each call site. Both paths the policy is built from go through it, since the
+ * `isWithin(root, agentDirectory)` guard compares them to each other.
+ */
+export async function createResolvedPathPolicy(options: PathPolicyOptions): Promise<PathPolicy> {
+	const [root, agentDirectory] = await Promise.all([canonicalize(options.root), canonicalize(options.agentDirectory)]);
+	return createPathPolicy({ ...options, root, agentDirectory });
+}
+
 export async function resolveAllowedPath(policy: PathPolicy, requested: string): Promise<{ path?: string; error?: string }> {
 	if (!requested || typeof requested !== "string" || isAbsolute(requested)) return { error: OUTSIDE_ROOT_ERROR };
-	const root = await realpath(policy.root).catch(() => resolve(policy.root));
+	// The root is canonical already, by construction. Re-deriving it here is what
+	// let it disagree with the copy stored on the policy (P6).
+	const root = policy.root;
 	const candidate = resolve(root, requested);
 	const resolved = admits(policy, root, candidate);
 	if (!resolved.ok) return { error: resolved.error };

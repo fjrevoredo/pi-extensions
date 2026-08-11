@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { open, readdir, realpath, stat } from "node:fs/promises";
+import { open, readdir, stat } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { bounded, boundedOutput, MAX_OUTPUT_BYTES, OUTPUT_TRUNCATION_NOTICE } from "./outbound-text.ts";
 import type { PathPolicy } from "./path-policy.ts";
@@ -29,7 +29,9 @@ async function readBounded(path: string, signal?: AbortSignal): Promise<string> 
 
 async function walk(policy: PathPolicy, start: string, maxDepth: number, signal?: AbortSignal): Promise<string[]> {
 	const output: string[] = [];
-	const root = await realpath(policy.root).catch(() => policy.root);
+	// policy.root is canonical by construction (createResolvedPathPolicy), so the
+	// relative paths below line up with the ones displayPath produces (P6).
+	const root = policy.root;
 	async function visit(directory: string, depth: number): Promise<void> {
 		signal?.throwIfAborted();
 		if (depth > maxDepth || output.length >= MAX_ENTRIES) return;
@@ -66,7 +68,7 @@ export async function executeRepositoryTool(
 		const info = await stat(allowed.path);
 		if (!info.isDirectory()) return "Error: target is not a directory.";
 		const entries = await readdir(allowed.path, { withFileTypes: true });
-		const root = await realpath(policy.root).catch(() => policy.root);
+		const root = policy.root;
 		const values: string[] = [];
 		for (const entry of entries) {
 			if (values.length >= MAX_ENTRIES || EXCLUDED.has(entry.name)) continue;

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { MAX_OUTPUT_LINES, OUTPUT_TRUNCATION_NOTICE } from "../outbound-text.ts";
-import { createPathPolicy, PROTECTED_OR_OUTSIDE_ERROR } from "../path-policy.ts";
+import { createResolvedPathPolicy, resolveAllowedPath } from "../path-access.ts";
+import { PROTECTED_OR_OUTSIDE_ERROR } from "../path-policy.ts";
 import { executeRepositoryTool } from "../repository-tools.ts";
 
 /**
@@ -16,9 +17,11 @@ import { executeRepositoryTool } from "../repository-tools.ts";
  */
 const agentDirectory = join(tmpdir(), "advisor-tests-agent-dir");
 
-async function fixture(options: { redact?: boolean; canonicalRoot?: boolean } = {}) {
-	const created = await mkdtemp(join(tmpdir(), "advisor-tools-"));
-	const root = options.canonicalRoot ? await realpath(created) : created;
+async function fixture(options: { redact?: boolean } = {}) {
+	// Deliberately the raw mkdtemp path, which on macOS reaches the directory
+	// through /var -> /private/var. createResolvedPathPolicy canonicalizes it, and
+	// that is what these tests are checking as much as the tools themselves.
+	const root = await mkdtemp(join(tmpdir(), "advisor-tools-"));
 	await mkdir(join(root, "src"));
 	await mkdir(join(root, "node_modules"));
 	await writeFile(join(root, "node_modules", "junk.txt"), "needle");
@@ -27,7 +30,7 @@ async function fixture(options: { redact?: boolean; canonicalRoot?: boolean } = 
 	await writeFile(join(root, ".env"), "needle in a protected file\n");
 	await writeFile(join(root, "logo.png"), "not really a png");
 	await writeFile(join(root, "blob.bin"), Buffer.from([0x68, 0x00, 0x69]));
-	const policy = createPathPolicy({
+	const policy = await createResolvedPathPolicy({
 		root,
 		agentDirectory,
 		additionalProtectedPaths: [],
@@ -138,8 +141,13 @@ test("grep redacts matched lines on the way out", async () => {
 	assert.doesNotMatch(grep, /sk_abcdefghijklmnop/);
 });
 
-test("results are relative to the root when the root is canonical", async () => {
-	const { policy } = await fixture({ canonicalRoot: true });
+test("every result is relative to the root, directory included", async () => {
+	// A8 pinned these two at the bare filename, because the root the fixture hands
+	// over is non-canonical and displayPath was taking its basename fallback for
+	// every result. A10 canonicalizes the root at construction, so the directory
+	// survives. Asserting the full anchored line matters here: /data\.txt:2:needle/
+	// is what the pre-A8 suite asserted, and it matches the broken output too.
+	const { policy } = await fixture();
 	assert.match(
 		await executeRepositoryTool(policy, "grep", { path: ".", pattern: "needle" }),
 		/^src[/\\]data\.txt:2:needle$/m,
@@ -147,25 +155,16 @@ test("results are relative to the root when the root is canonical", async () => 
 	);
 	const read = await executeRepositoryTool(policy, "read", { path: join("src", "data.txt") });
 	assert.equal(read.split("\n")[0], join("src", "data.txt"), "the read header is the relative path");
+	const found = (await executeRepositoryTool(policy, "find", { path: "." })).split("\n");
+	assert.ok(found.includes(join("src", "data.txt")), "find reports nested paths, not basenames");
+	assert.ok(found.includes("src"));
 });
 
-test("DEFECT (A10): a non-canonical root reduces every result to a bare filename", async () => {
+test("the root is canonical however it was spelled on the way in", async () => {
 	const { root, policy } = await fixture();
-	const canonical = await realpath(root);
-	if (root === canonical) return; // nothing to pin on a filesystem without the symlink
-
-	// createPathPolicy stores resolve(root) while every consumer computes
-	// realpath(root) separately, so relative() escapes upward and displayPath
-	// takes its basename fallback. The directory is silently dropped from every
-	// read header, find entry and grep hit — and this is the *normal* case on
-	// macOS, not an edge case.
-	//
-	// The lesson the plan draws from this is why the assertions above exist: the
-	// old suite asserted /data\.txt:2:needle/, which passes through this fallback
-	// just as happily as through the intended path, so the intended path had
-	// never executed. A10 flips these two assertions.
-	const grep = await executeRepositoryTool(policy, "grep", { path: ".", pattern: "needle" });
-	assert.match(grep, /^data\.txt:2:needle$/m, "A10 flips this to src/data.txt:2:needle");
-	const read = await executeRepositoryTool(policy, "read", { path: join("src", "data.txt") });
-	assert.equal(read.split("\n")[0], "data.txt", "A10 flips this to src/data.txt");
+	assert.equal(policy.root, await realpath(root), "createResolvedPathPolicy normalizes once, at construction");
+	// The tools compare against exactly this string, so there is no second
+	// spelling left for them to disagree with (P6).
+	const allowed = await resolveAllowedPath(policy, join("src", "data.txt"));
+	assert.ok(allowed.path?.startsWith(policy.root), "resolved paths sit under the stored root");
 });

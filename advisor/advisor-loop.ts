@@ -2,7 +2,8 @@ import type { Api, AssistantMessage, Context, Model, Usage } from "@earendil-wor
 import type { AdvisorConfig, Advice } from "./contracts.ts";
 import { validateAdvice } from "./contracts.ts";
 import { advisorCompletionOptions } from "./advisor-options.ts";
-import { createPathPolicy, type PathPolicy } from "./path-policy.ts";
+import type { PathPolicy } from "./path-policy.ts";
+import { createResolvedPathPolicy } from "./path-access.ts";
 import { executeRepositoryTool } from "./repository-tools.ts";
 import {
 	type AdvisorToolCall,
@@ -100,7 +101,10 @@ export async function runAdvisorLoop(input: {
 		messages: [{ role: "user", content: input.evidence, timestamp: now() }],
 		tools: [...PRIVATE_TOOLS],
 	};
-	const policy = createPathPolicy({
+	// Canonicalized once, here, rather than re-derived per call: the root has to be
+	// the same string the tools compare against, or displayPath degrades to bare
+	// basenames and the agent-directory guard silently stops matching (P6).
+	const policy = await createResolvedPathPolicy({
 		root: input.root,
 		agentDirectory: input.agentDirectory,
 		additionalProtectedPaths: input.config.security.additionalProtectedPaths,

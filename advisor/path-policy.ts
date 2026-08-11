@@ -90,6 +90,17 @@ export function admits(policy: PathPolicy, root: string, candidate: string): { o
 	return { ok: true };
 }
 
+/**
+ * **The root and the agent directory must already be canonical.** This function
+ * is pure, so it cannot canonicalize them itself — it only `resolve`s, which
+ * normalizes `.` and `..` but does not follow symlinks. Use
+ * `createResolvedPathPolicy` from path-access.ts unless you are constructing a
+ * policy for a hermetic test over paths that never touch a disk.
+ *
+ * That distinction is the whole of the bug A10 fixed: `resolve` and `realpath`
+ * are two different normalizers, and using one here while consumers used the
+ * other left them comparing different spellings of the same directory (P6).
+ */
 export function createPathPolicy(options: PathPolicyOptions): PathPolicy {
 	const additions = [...options.additionalProtectedPaths];
 	if (isWithin(options.root, options.agentDirectory)) additions.push(relative(options.root, options.agentDirectory));
@@ -100,6 +111,14 @@ export function createPathPolicy(options: PathPolicyOptions): PathPolicy {
 	};
 }
 
+/**
+ * How one path is named in advisor-visible output: relative to the root.
+ *
+ * The basename fallback is a backstop for a path that somehow escapes the root,
+ * so an absolute location never reaches the advisor. It is *only* a backstop —
+ * before A10 a non-canonical root made it the normal path, which quietly reduced
+ * every read header, find entry and grep hit to a filename with no directory.
+ */
 export function displayPath(root: string, path: string): string {
 	const result = relative(root, path) || ".";
 	return result.startsWith("..") ? basename(path) : result;
