@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 import { ADVISOR_VERSION, defaultConfig, DEFAULT_LIMITS, type AdvisorConfig, THINKING_LEVELS } from "./contracts.ts";
+import { MODEL_REFERENCE_PATTERN } from "./model-reference.ts";
 
 export const ADVISOR_CONFIG_FILENAME = "advisor.json";
 
@@ -26,7 +27,7 @@ export function validateConfig(value: unknown): AdvisorConfig | undefined {
 	if (!hasOnlyKeys(value, ["version", "enabled", "model", "thinking", "limits", "security"])) return undefined;
 	const input = value as Partial<AdvisorConfig>;
 	if (input.version !== ADVISOR_VERSION || typeof input.enabled !== "boolean") return undefined;
-	if (input.model !== undefined && (typeof input.model !== "string" || !/^[^/\s]+\/[^/\s]+$/.test(input.model))) return undefined;
+	if (input.model !== undefined && (typeof input.model !== "string" || !MODEL_REFERENCE_PATTERN.test(input.model))) return undefined;
 	if (!THINKING_LEVELS.includes(input.thinking as AdvisorConfig["thinking"])) return undefined;
 	const limits = input.limits;
 	if (!limits || typeof limits !== "object" || Array.isArray(limits) || !hasOnlyKeys(limits, Object.keys(DEFAULT_LIMITS))) return undefined;
