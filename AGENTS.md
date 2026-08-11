@@ -12,8 +12,8 @@ standard and is cited by ID (`L1`, `A5`, `C3`, …) — cite those IDs in commit
 review notes too. Check §18 before re-litigating a decision, and §19 before adding something
 the standard deliberately leaves out.
 
-The repository is in full conformance today (§16), with no exemptions: every extension is
-bound by every rule area, and nothing is excluded from Biome.
+There are no exemptions. Every extension is bound by every rule area — being small, being
+new, or not being a *gate* exempts nothing — and nothing is excluded from Biome.
 
 ## Repository role
 
@@ -96,7 +96,7 @@ real session show up at `/reload`, which is another reason that step is not opti
 
 ## Current extensions
 
-Each is the reference implementation for at least one rule area (§16). When in doubt about
+Each is the reference implementation for at least one rule area. When in doubt about
 how to do something, copy the extension that already does it best. Each has its own
 `README.md` with its contract and test instructions.
 

@@ -9,8 +9,8 @@ import { SYSTEM_PROMPT } from "../contracts.ts";
  * pi for the right things, in the right order, and that its one defaulted
  * parameter defaults the safe way.
  *
- * The plan that promoted this extension recorded `context.ts` as having no tests
- * at all; this is that gap closed.
+ * `context.ts` was the last module in this extension with no tests at all; this
+ * is that gap closed.
  */
 
 const ENTRIES = [

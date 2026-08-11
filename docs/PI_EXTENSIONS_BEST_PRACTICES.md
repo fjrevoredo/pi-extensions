@@ -476,7 +476,7 @@ Measured wall-clock on this repo: ~3 seconds.
 
 `.github/workflows/ci.yml`, one job named `checks`, on every push to `master` and every pull request. It runs the same three npm scripts as separate steps — so one run reports all three failures rather than only the first — plus two hygiene checks that only make sense in CI.
 
-**Drift between the two layers is controlled by mechanism, not by discipline.** Neither file defines a command: the hook calls the npm scripts and so does the workflow, so there is nothing in either file to drift. `.github/scripts/check-hook-parity.sh` then asserts that they invoke the same set, because this repository's own finding is that a rule nothing asserts drifts (§16) — and the hook had in fact already drifted from the scripts once, calling `node --test` and `npx biome check .` directly.
+**Drift between the two layers is controlled by mechanism, not by discipline.** Neither file defines a command: the hook calls the npm scripts and so does the workflow, so there is nothing in either file to drift. `.github/scripts/check-hook-parity.sh` then asserts that they invoke the same set, because a rule nothing asserts drifts — and the hook had in fact already drifted from the scripts once, calling `node --test` and `npx biome check .` directly.
 
 **`.github/scripts/check-runtime-hygiene.sh` is the strongest argument for CI existing at all.** L7 is a MUST that was previously verified by a human reading a `--dry-run`. `sync-extensions.sh` honours an overridden `HOME` (§17), so the rule became mechanically checkable: sync into a throwaway `HOME`, then assert a **positive** invariant — every surviving file is a non-test `.ts`, no non-runtime directory exists, and every `<ext>/index.ts` in `git ls-files` survived.
 
@@ -500,97 +500,11 @@ Branch protection on `master` requires the `checks` status. Required checks only
 
 ---
 
-## 15. Migration plan
-
-**Carried out**, together with the §14 hook and the deferred quality items (`U5`, `S3`/`F5`, `F3`, `L6`). §16 describes the resulting state; the findings it surfaced are recorded there, and the toolchain facts it established are in §17. The table is kept because the *sequencing rationale* — cheapest first, layout before formatting, reformat last — is the guidance for any future migration of this kind.
-
-Four things were learned in the doing that the table does not show, and that would apply again:
-
-- **Order matters more than the table implies.** Steps 4 and 5 (layout, language) must land before step 6 (formatting), or files get reformatted twice and the diffs become unreviewable. Equally, the formatting pass must come *after* the last file has moved, not merely after the last file has been edited.
-- **Typechecking previously-unchecked code surfaces findings, not just errors.** Step 2 is worth doing early precisely because it is diagnostic: it is what revealed the `ToolCallEvent` narrowing gap in §16.
-- **Batch the manual `/reload` checks.** Syncing a half-migrated tree into the live runtime directory once per step is a real risk for no benefit. One checkpoint after the layout milestone and one at the end is enough; every automated check still runs per step.
-- **Verify a moved function against the original, not against its tests.** For each refactor that relocated logic, the pre-move implementation was recovered from git and run side by side with the new one over generated inputs. That is what makes "no behaviour change" a claim rather than a hope, and it is cheap.
-
-Ratified sequence — one concern per commit, cheapest and lowest-risk first, reformat last so no file is touched twice. Each step is independently revertible; stopping part-way leaves the repo consistent.
-
-| # | Rules | Change | Verify |
-|---|---|---|---|
-| 1 | C2 | Bump `context-footer` `0.80.10` → `0.84.1` | typecheck, tests, `/reload` (API drift across four minors) |
-| 2 | C1, C3, T9 | Root `package.json` + `tsconfig.base.json`, per-extension `tsconfig.json`, sync exclusion for `/package.json` | `npm run typecheck` exists for the first time |
-| 3 | R3, R2 | Add `.ts` to three imports, drop `tsx`, rewrite two parameter-property constructors | root `node --test` goes green |
-| 4 | L1 | `ask-user/index.ts`, `permission-gate/index.ts`, tests into `test/`, update `sync-extensions.sh` | `pi --list-models`, sync, `/reload`, exercise both extensions |
-| 5 | R1 | `core.mjs` → `core.ts`; `validate.mjs` → `test/core.test.ts` | tests, `/reload`, trigger one gated command |
-| 6 | C4 | `biome.json` + one reformat pass | `npm run lint` |
-| 7 | T4 | Fake-`pi` harness tests for `ask-user` and `permission-gate` | tests |
-| 8 | — | `advisor`: drop the obsolete `--experimental-strip-types` flag | tests |
-| 9 | all | `advisor` promoted to full conformance: entrypoint reduced to wiring, 2 defects fixed, 5 test files → 15, Biome adopted | typecheck, tests, lint, manual pi pass |
-
-`validate.mjs` is retired without replacement (step 5). It guarded rule regressions — now caught earlier by `test/core.test.ts` — and a stale sync, which `rsync -a --delete` does not produce. Extension load is covered by the T4 fake-`pi` harnesses, which call every extension's default export under `node --test`.
-
-Half of that rationale was originally wrong and has been corrected: it said extension load was covered by `pi --list-models`, which was later measured and does not detect a broken extension at all (§17). The T4 harnesses were doing the work the whole time.
-
----
-
-## 16. Conformance of the current extensions
-
-Assessed against this document as of the current working tree, **after** the §15 migration.
-
-| Rule area | `ask-user` | `permission-gate` | `context-footer` | `advisor` |
-|---|---|---|---|---|
-| L1 directory layout | ✓ | ✓ | ✓ | ✓ |
-| L5 tests under `test/` | ✓ | ✓ | ✓ | ✓ |
-| L6 extension README | ✓ | ✓ | ✓ | ✓ |
-| R1 TypeScript | ✓ | ✓ | ✓ | ✓ |
-| R2 erasable syntax | ✓ | ✓ | ✓ | ✓ |
-| R3 explicit `.ts` imports | ✓ | ✓ | ✓ | ✓ |
-| S1 pure core | ✓ `validation.ts`, `display.ts`, `option-layout.ts` | ✓ rule catalogue | ✓ `format.ts` | ✓ `consultation.ts`, `slash-command.ts`, `turn-policy.ts`, `evidence.ts`, `path-policy.ts`, `outbound-text.ts`, `model-reference.ts` |
-| S3 humble UI | ✓ display construction extracted | ✓ | ✓ fallback search extracted | n/a |
-| F3 parameter count | ✓ `WizardDeps` | ✓ | ✓ | ✓ options objects throughout |
-| A1–A11 agent contract | ✓ reference implementation | n/a (no tool) | n/a | ✓ |
-| E1–E7 lifecycle | ✓ stateless per call | ✓ | ✓ generation guard | ✓ |
-| P1–P6 safety | n/a | ✓ reference implementation | n/a | ✓ path filter + redaction (P5 n/a: no approval cache) |
-| U5 key hints | ✓ derived from the keybindings manager | n/a (built-in dialog) | n/a | n/a |
-| T1 `node --test` | ✓ | ✓ | ✓ | ✓ |
-| T4 entrypoint harness test | ✓ | ✓ | ✓ reference implementation | ✓ |
-| T9 typechecked | ✓ | ✓ | ✓ | ✓ |
-| C2 pinned pi version | ✓ root `package.json` at `0.84.1` | ✓ | ✓ | ✓ |
-| C4 formatting | ✓ | ✓ | ✓ | ✓ |
-| D1–D5 comments | ✓ | ✓ reference implementation | ✓ | ✓ |
-
-Whole-repo state: `npm run typecheck` clean, `node --test` **202 passing / 0 failing** from the repository root, `npm run lint` clean, one `package.json` with a tracked lockfile, one pinned pi version, and both enforcement layers running all three — the pre-commit hook locally and the `checks` job in CI, which additionally asserts L7 mechanically (§14).
-
-Two of `advisor`'s `P` cells need a sentence rather than a tick. **`P2` is satisfied, not violated**, despite the README describing failures as fail-open: `/advisor` refuses to configure without an interactive UI, so the provider disclosure can never be skipped; the path filter denies on every resolution error except `ENOENT`; and "fail-open" refers only to returning control to the driver. **No repository data or session context leaves the machine on any failure path** — every gate refuses before a provider is contacted at all. **`P5` is genuinely `n/a`**: `advisor` caches no approvals, so there is no approval scope to get wrong.
-
-One pre-existing limitation is recorded here because it was undocumented until the promotion: a model whose id contains a slash — Vertex's `publishers/google/…` — cannot be configured at all, because a stored model reference must match `provider/id` with exactly one slash. Widening the pattern is a behaviour change (§19) and was left alone.
-
-`advisor` no longer has deferred rows. Promoting it took sixteen commits, and the measured before and after: the entrypoint went from 158 lines mixing wiring with policy and formatting to wiring only; the extension went from 12 modules to 15; its tests went from 5 files to 15 — one per module — and the repository suite from 71 passing to 202; two verified defects were fixed; and the Biome exemption was removed. Nothing in `biome.json` is excluded from linting or formatting any more.
-
-No extension was ever a bad citizen — each is the reference implementation for at least one rule area, and the gaps this table used to record were almost entirely *inconsistency between good extensions* rather than defects within any of them. Most of this document propagated what one extension already did best to the others rather than importing outside ideas.
-
-Two things the migration surfaced that no review had:
-
-- Typechecking `permission-gate/core.ts` for the first time revealed that `event.toolName !== "bash"` does **not** narrow pi's `ToolCallEvent` union, because `CustomToolCallEvent.toolName` is a plain `string`. An extension-registered tool named `bash` therefore reaches the gate with an arbitrary payload. This is the strongest evidence for `R1` in the document.
-- Asserting `A4` in a test revealed that three of `ask-user`'s twelve `promptGuidelines` bullets did not name their own tool, despite this table previously recording `A1`–`A11` as `✓`. A rule that nothing asserts drifts.
-
-Five more from promoting `advisor`, in the same register:
-
-- **A rule area marked `n/a` is never re-examined.** `P1`–`P6` sat as `n/a` in this table for the one extension besides `permission-gate` that can cause harm, purely because `advisor` is not a *gate*. It filters paths and redacts secrets before shipping repository text to a third-party provider, so §8 applied in full the whole time — and the two verified defects below were both `P6` violations sitting in that unexamined area. `n/a` is a claim and needs the same scrutiny as `✓`.
-
-- **Case-sensitive matching against a case-insensitive filesystem.** `isProtected` compared canonical path segments against a lowercase catalogue, so a file genuinely named `Credentials.json` was admitted and read, and `additionalProtectedPaths: ["Secrets"]` against an on-disk `secrets/` protected *nothing*. A configured protection that silently fails open is worse than an absent one, because it reads as configured. The related requested-casing hole was closed only by an undocumented accident: `realpath` from `node:fs/promises` folds filename case where `fs.realpathSync` does not (§17), so a security property rested on which import someone happened to choose.
-
-- **A test that passes for the wrong reason asserts nothing.** 35 lines covering 2 of 15 catalogue entries was recorded as `✓` — coverage of a catalogue has to be **counted**, and a meta-test now fails if any entry lacks both a positive and a near-miss negative case (`P4`). Worse, `displayPath`'s only assertion, `/data\.txt:2:needle/`, passed through a *fallback* branch: the root was non-canonical, so every result was reduced to a bare filename, and the assertion matched that just as happily as the intended `src/data.txt`. The intended code path had never executed. Anchor assertions that are meant to pin a path, or they pin nothing.
-
-- **For an ordering property, one sample is never enough.** The assertion that evidence is redacted *before* the byte cap passed under the reversed ordering too, because a single sample sits inside the head or the tail intact. The failure is alignment-specific and precise: a secret straddling the cut leaves `sk_` plus fifteen characters, one short of the redactor's sixteen-character threshold, so the fragment goes unmatched and would be shipped. Sweep the boundary; do not sample it.
-
-- **Verify the mutation applied before concluding a test is insensitive.** Every commit in the promotion was mutation-tested before its green run was trusted, and two apparent gaps turned out to be a quoting bug in the mutation script while two others were semantically inert mutations. A mutation that never applied and a mutation that cannot change behaviour both look exactly like coverage. The runner now reports *never applied* as a third outcome, and inert controls are included deliberately to confirm it reports real escapes.
-
----
-
 ## 17. Verified toolchain facts
 
 Every rule resting on a claim about the toolchain was measured, not assumed. Recorded so no future agent has to re-derive them or is tempted to doubt a rule that looks like mere style. Measured on Node v24.16.0, pi 0.84.1.
 
-**These are measurements taken against the pre-§15 tree** — the paths and counts are as they were at the time, which is what makes them evidence. The violations they record have since been fixed; §16 describes the current state.
+**These are measurements taken against the tree as it was before the rules were applied to it** — the paths and counts are as they were at the time, which is what makes them evidence. The violations they record have since been fixed.
 
 | Claim | How it was checked | Result | Rule |
 |---|---|---|---|
@@ -634,7 +548,7 @@ Recorded so these are not re-litigated. Only the decisions where the alternative
 
 **Bare tool names over namespacing (N1).** Anthropic's guidance recommends namespacing (`asana_search`, `jira_search`), but it targets disambiguation among many similar tools; there are a handful of distinct ones here. pi warns in interactive mode when an extension shadows a built-in, so a collision is loud rather than silent, and renaming later would orphan the tool calls stored in existing sessions. Prefixing was rejected as solving a detectable problem at a permanent cost to prompt readability.
 
-**`validate.mjs` retired with no replacement (§15 step 5).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by the T4 fake-`pi` harnesses.
+**`validate.mjs` retired with no replacement (the migration).** Two substitutes were considered and rejected: a `verify-sync.mjs` importing the synced copy (ceremony for a failure mode `rsync -a --delete` does not have) and syncing the test file into the runtime directory (violates L7). What it actually guarded is now covered earlier and better: rule regressions by `test/core.test.ts`, and extension load by the T4 fake-`pi` harnesses.
 
 The second half of that claim originally read "extension load by `pi --list-models` in §13", and was wrong: `pi --list-models` exits 0 against a deliberately broken extension (§17). The decision to retire `validate.mjs` still stands — the T4 harnesses are a strictly stronger load gate than either — but it stood on one correct reason, not two.
 
@@ -644,7 +558,7 @@ The second half of that claim originally read "extension load by `pi --list-mode
 
 **A pre-commit hook rather than a checklist alone (§14).** The deciding argument is that agents are the main contributors to this repository, and a document is advisory to an agent while a hook is not. This repo drifted three separate ways under a human-protocol regime.
 
-**CI in addition to the hook, reversing the §19 non-goal.** "No CI" was justified by "enforcement is the local pre-commit hook", and that justification does not survive inspection: `core.hooksPath` is per-clone local config that cannot be committed, so the hook is absent in a fresh clone and in every new agent worktree — absent, that is, exactly where agents work. The second deciding argument is that CI makes **L7 mechanically checkable for the first time**: `sync-extensions.sh` honours an overridden `HOME` (§17), so "nothing reaches the runtime directory except what pi loads" stops being a rule verified by reading a dry-run. A rule this document calls MUST while nothing checks it is the exact failure mode §16 already recorded twice.
+**CI in addition to the hook, reversing the §19 non-goal.** "No CI" was justified by "enforcement is the local pre-commit hook", and that justification does not survive inspection: `core.hooksPath` is per-clone local config that cannot be committed, so the hook is absent in a fresh clone and in every new agent worktree — absent, that is, exactly where agents work. The second deciding argument is that CI makes **L7 mechanically checkable for the first time**: `sync-extensions.sh` honours an overridden `HOME` (§17), so "nothing reaches the runtime directory except what pi loads" stops being a rule verified by reading a dry-run. A rule this document calls MUST while nothing checks it is the exact failure mode §14's doctrine describes, and this repository has recorded it twice.
 
 **Three CI steps rather than CI invoking the hook.** Calling `.githooks/pre-commit` from the workflow would guarantee parity in one line, but `set -euo pipefail` means the first failure hides the other two, and a remote run that reports one problem per push is expensive. Separate steps, each guarded with `!cancelled()`, report all three. Parity is recovered by making both files pure call sites and asserting it (§14).
 
@@ -672,7 +586,7 @@ Deliberately absent. Do not add these without a decision.
 - **No CI matrix.** One OS and one Node major. Node 24's semantics *are* the test strategy here — R2's erasable syntax and R3's explicit extensions exist because of what Node 24 does and does not do (§17) — so a matrix would test configurations the rules are not written for. `ubuntu-latest` only, pinned by `engines.node` at `^24`.
 - **No dependency-update bot.** C2 requires every `@earendil-works/*` package to move with the *installed* pi runtime, and upgrading pi is a defined procedure (C2, N1), not a version bump. A bot's pull requests would always be closed unmerged.
 - **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs).
-- **No behaviour changes as part of conformance work.** The §15 migration moves, renames, and reformats. If a migration step wants to change what an extension does, that is a separate commit.
+- **No behaviour changes as part of conformance work.** Conformance work moves, renames, and reformats. If a conformance step wants to change what an extension does, that is a separate commit.
 
 ---
 

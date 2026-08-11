@@ -5,7 +5,7 @@
 # Both files are pure call sites: neither defines a command, both invoke npm
 # scripts. That makes drift structurally unlikely but not impossible — someone
 # can still add a check to one and forget the other. This repository's own
-# doctrine is that a rule nothing asserts drifts (§16), and the hook had in fact
+# doctrine is that a rule nothing asserts drifts (§14), and the hook had in fact
 # already drifted from the scripts once, so the parity is asserted rather than
 # trusted.
 #
