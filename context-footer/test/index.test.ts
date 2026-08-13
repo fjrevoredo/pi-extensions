@@ -6,7 +6,42 @@ import contextFooterExtension from "../index.ts";
 
 type Handler = (event: any, ctx?: any) => unknown;
 
-function createHarness() {
+interface FakeTheme {
+	bold(text: string): string;
+	fg(color: string, text: string): string;
+}
+
+/** Erases styling, so layout assertions can match the plain text. */
+const plainTheme: FakeTheme = {
+	fg: (_color, text) => text,
+	bold: (text) => text,
+};
+
+/**
+ * Records styling as visible markup, resolving each color name through a palette the way a
+ * real theme does. The palette is the `matrix` theme's, where `mdHeading` and `success` are
+ * both #00FF41 — a fake that echoed the requested *name* instead would report two tiers as
+ * distinct while the terminal painted them identically, which is how the collision survived.
+ */
+const MATRIX_PALETTE: Record<string, string> = {
+	accent: "#00FF41",
+	dim: "#33CC55",
+	error: "#FF2222",
+	mdHeading: "#00FF41",
+	muted: "#33CC55",
+	success: "#00FF41",
+	warning: "#CCFF00",
+};
+
+const markerTheme: FakeTheme = {
+	fg: (color, text) => {
+		const resolved = MATRIX_PALETTE[color] ?? color;
+		return `<${resolved}>${text}</${resolved}>`;
+	},
+	bold: (text) => `<b>${text}</b>`,
+};
+
+function createHarness(theme: FakeTheme = plainTheme) {
 	const handlers = new Map<string, Handler[]>();
 	let footerFactory: any;
 	let usage: any = { tokens: 84_000, contextWindow: 200_000, percent: 42 };
@@ -45,9 +80,6 @@ function createHarness() {
 		},
 	};
 
-	const theme = {
-		fg: (_color: string, text: string) => text,
-	};
 	const footerData = {
 		getGitBranch: () => "feature/PLAT-4821",
 		onBranchChange(callback: () => void) {
@@ -116,6 +148,36 @@ test("tracks agent and tool lifecycle state", async () => {
 	harness.emit("agent_settled");
 	assert.match(footer.render(160)[1], /Ready/);
 	assert.ok(harness.renderRequests >= 4);
+});
+
+test("paints each context tier differently in the rendered meter", async () => {
+	const harness = createHarness(markerTheme);
+	const footer = await harness.start();
+	const contextWindow = 1_050_000;
+
+	// The tone always paints the percent text; below one cell's worth of usage the bar has no
+	// filled cells to paint, so the percent text is what has to carry the tier.
+	const toneMarkupOf = (tokens: number): string => {
+		harness.usage = { tokens, contextWindow, percent: (tokens / contextWindow) * 100 };
+		const line = footer.render(200)[1];
+		const styled = line.match(/(?:<b>)?<([^>]+)>\d+%<\/\1>(?:<\/b>)?/);
+		assert.ok(styled, `no styled percent text in: ${line}`);
+		return styled[0].replace(/\d+%/, "N%");
+	};
+
+	const success = toneMarkupOf(50_000);
+	const warning = toneMarkupOf(120_000);
+	const orange = toneMarkupOf(210_000);
+	const error = toneMarkupOf(260_000);
+
+	assert.equal(success, "<#00FF41>N%</#00FF41>");
+	assert.equal(warning, "<#CCFF00>N%</#CCFF00>");
+	// The orange tier must not collapse onto the success tier's color, which is what borrowing
+	// `mdHeading` did under any theme aliasing it to the success color.
+	assert.equal(orange, "<b><#CCFF00>N%</#CCFF00></b>");
+	assert.equal(error, "<#FF2222>N%</#FF2222>");
+
+	assert.equal(new Set([success, warning, orange, error]).size, 4);
 });
 
 test("uses context pressure and unknown-context displays", async () => {

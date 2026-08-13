@@ -8,6 +8,7 @@ import {
 	formatGitSummary,
 	getContextTone,
 	getCumulativeCost,
+	getToneStyle,
 	joinFooterSegments,
 	parseGitStatus,
 	truncateSegment,
@@ -23,6 +24,21 @@ test("uses hard token thresholds instead of context-window percentages", () => {
 	assert.equal(getContextTone({ tokens: 249_999, contextWindow: 1_000_000, percent: 24.9999 }), "orange");
 	assert.equal(getContextTone({ tokens: 250_000, contextWindow: 1_000_000, percent: 25 }), "error");
 	assert.equal(getContextTone({ tokens: 250_000, contextWindow: 2_000_000, percent: 12.5 }), "error");
+});
+
+test("styles every tone distinguishably regardless of how a theme aliases its palette", () => {
+	assert.deepEqual(getToneStyle("success"), { bold: false, color: "success" });
+	assert.deepEqual(getToneStyle("warning"), { bold: false, color: "warning" });
+	assert.deepEqual(getToneStyle("orange"), { bold: true, color: "warning" });
+	assert.deepEqual(getToneStyle("error"), { bold: false, color: "error" });
+	assert.deepEqual(getToneStyle("unknown"), { bold: false, color: "muted" });
+
+	// The orange tier used to borrow `mdHeading`, which a theme may alias to the same color
+	// as `success` — the `matrix` theme aliases both to #00FF41, so orange rendered as green.
+	// No tone may be separated from another by color alone unless that color is its own.
+	const tones = ["success", "warning", "orange", "error", "unknown"] as const;
+	const styles = tones.map((tone) => JSON.stringify(getToneStyle(tone)));
+	assert.equal(new Set(styles).size, tones.length);
 });
 
 test("renders known and unknown context meters", () => {

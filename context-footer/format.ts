@@ -1,6 +1,12 @@
+import type { ThemeColor } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 export type ContextTone = "success" | "warning" | "orange" | "error" | "unknown";
+
+export interface ToneStyle {
+	bold: boolean;
+	color: ThemeColor;
+}
 
 export interface ContextUsage {
 	contextWindow?: number;
@@ -64,6 +70,22 @@ export function getContextTone(usage: ContextUsage | undefined): ContextTone {
 	if (tokens >= CONTEXT_ORANGE_TOKENS) return "orange";
 	if (tokens >= CONTEXT_WARNING_TOKENS) return "warning";
 	return "success";
+}
+
+/**
+ * Tone to theme styling.
+ *
+ * pi exposes no orange semantic color, and `mdHeading` is not a safe stand-in for one: a
+ * theme may alias it to the same color as `success`, which renders the orange tier
+ * indistinguishable from the healthy tier — the `matrix` theme aliases both to `#00FF41`,
+ * so crossing into orange visibly reverted to green. Bold is orthogonal to the palette, so
+ * bold `warning` stays distinct from every other tier under any theme without hard-coding
+ * ANSI (U4).
+ */
+export function getToneStyle(tone: ContextTone): ToneStyle {
+	if (tone === "unknown") return { bold: false, color: "muted" };
+	if (tone === "orange") return { bold: true, color: "warning" };
+	return { bold: false, color: tone };
 }
 
 export function formatContextMeter(usage: ContextUsage | undefined, cells = CONTEXT_CELLS): ContextMeter {

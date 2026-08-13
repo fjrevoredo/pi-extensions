@@ -12,6 +12,7 @@ import {
 	type GitSummary,
 	getContextTone,
 	getCumulativeCost,
+	getToneStyle,
 	joinFooterSegments,
 	parseGitStatus,
 	truncateSegment,
@@ -20,10 +21,9 @@ import {
 type AgentPhase = "ready" | "thinking" | "running";
 
 function themeTone(theme: Theme, tone: ContextTone, text: string): string {
-	if (tone === "unknown") return theme.fg("muted", text);
-	// Pi exposes yellow as `warning` but has no orange semantic color. The
-	// heading color is the closest warm, theme-configurable color available.
-	return theme.fg(tone === "orange" ? "mdHeading" : tone, text);
+	const style = getToneStyle(tone);
+	const painted = theme.fg(style.color, text);
+	return style.bold ? theme.bold(painted) : painted;
 }
 
 export default function contextFooterExtension(pi: ExtensionAPI): void {

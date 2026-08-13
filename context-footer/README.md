@@ -11,7 +11,7 @@ A global Pi extension that replaces the default interactive footer with a two-ro
 
 - **Project row:** working directory, Git branch, Git summary, and session name.
 - **Agent row:** agent/tool state, graphical context meter, model/thinking level, and cumulative provider-reported session cost.
-- **Context thresholds:** based on estimated tokens, not context-window percentage: green below 100k, yellow from 100k through 199,999, orange from 200k through 249,999, and red at 250k and above. The displayed percentage remains the model-reported context-window percentage.
+- **Context thresholds:** based on estimated tokens, not context-window percentage: green below 100k, yellow from 100k through 199,999, bold yellow from 200k through 249,999, and red at 250k and above. The displayed percentage remains the model-reported context-window percentage.
 - **Unknown context:** shows `CTX ?????????? ?%` when Pi has no current usage estimate, including immediately after compaction.
 - **Responsive layout:** drops less important fields as terminal width decreases. It never emits a line wider than the width Pi supplies.
 
@@ -46,6 +46,8 @@ The extension intentionally owns Pi's single custom-footer slot. It does not com
 
 ## Limitations
 
-- Context usage comes from `ctx.getContextUsage()`. Pi estimates trailing context and can report unknown usage after compaction until the next model response. Pi's theme API does not expose an orange semantic color, so the orange tier uses the theme's warm `mdHeading` color.
+- Context usage comes from `ctx.getContextUsage()`. Pi estimates trailing context and can report unknown usage after compaction until the next model response.
+- **The third tier is bold yellow, not orange.** Pi's theme API exposes no orange semantic color. Borrowing the warm `mdHeading` color was the original substitution and was wrong: a theme may alias `mdHeading` to the same color as `success` — the `matrix` theme aliases both to `#00FF41` — so crossing 200k tokens rendered *identically to green*, reading as the meter recovering rather than degrading. Bold is orthogonal to the palette, so bold `warning` cannot collide with another tier under any theme, and no ANSI is hard-coded (U4).
+- **Read the third tier off the percentage, not the bar.** Bold is what separates it from the yellow tier, and bold on the solid `█` glyph is imperceptible in many terminals — it is legible on the percentage digits, which are rendered in the tier's style even when usage is below one cell's worth and the bar has no filled cells at all. Note also that `theme.bold()` is chalk-backed and therefore suppressed when chalk detects no color support (`NO_COLOR`, a non-TTY stdout), while `theme.fg()` writes ANSI unconditionally; in that case this tier falls back to reading as the yellow tier. Interactive TUI mode is the only mode this extension renders in, so stdout is a TTY there.
 - Cost is summed from assistant-message usage across all session entries, matching Pi's default-footer accounting. Subscription-backed providers may report `$0.000`.
 - Git state refreshes on session start, agent settled, and Git branch changes. It does not watch every working-tree file change continuously.
