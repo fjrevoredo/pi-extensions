@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { type Advice, AdviceSchema, formatAdvice, SYSTEM_PROMPT, validateAdvice } from "../contracts.ts";
+import {
+	type Advice,
+	AdviceSchema,
+	DEFAULT_LIMITS,
+	formatAdvice,
+	SYSTEM_PROMPT,
+	validateAdvice,
+} from "../contracts.ts";
 
 /**
  * The advisor-facing contract: the shape of advice, and the prompt that asks for
@@ -116,6 +123,16 @@ test("SYSTEM_PROMPT and AdviceSchema do not drift apart", () => {
 	assert.ok(SYSTEM_PROMPT.includes("exactly one submit_advice tool call"));
 	// The four read-only tools it is allowed to reach, and nothing else.
 	assert.ok(SYSTEM_PROMPT.includes("read, grep, find, and ls"));
+});
+
+test("SYSTEM_PROMPT asks for an advice that fits the output budget", () => {
+	// The schema's own bounds allow roughly 36,600 characters of advice, which no
+	// per-turn cap can cover. The prompt carries the realistic bounds instead, and
+	// they are the same ones the loop's truncation notice repeats after a length stop.
+	assert.ok(SYSTEM_PROMPT.includes("under 400 characters"));
+	assert.ok(SYSTEM_PROMPT.includes("three or four rationale entries"));
+	assert.ok(SYSTEM_PROMPT.includes("omit the optional per-risk evidence arrays"));
+	assert.equal(DEFAULT_LIMITS.maxAdvisorOutputTokens, 4_000, "the cap those bounds are sized against");
 });
 
 test("SYSTEM_PROMPT states the untrusted-evidence policy the labels refer to", () => {

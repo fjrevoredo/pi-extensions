@@ -130,7 +130,9 @@ export function formatConfig(config: AdvisorConfig): string {
 		`enabled: ${config.enabled}`,
 		`model: ${config.model ?? "not configured"}`,
 		`thinking: ${config.thinking}`,
-		`limits: ${config.limits.maxConsultationsPerRun}/run, ${config.limits.maxConsultationsPerSession}/session, ${config.limits.maxAdvisorTurns} turns, ${config.limits.maxReadOnlyToolCalls} reads`,
+		// The output cap is shown because it is the one limit a `truncated` failure
+		// asks the user to raise, and a saved advisor.json keeps its own value.
+		`limits: ${config.limits.maxConsultationsPerRun}/run, ${config.limits.maxConsultationsPerSession}/session, ${config.limits.maxAdvisorTurns} turns, ${config.limits.maxReadOnlyToolCalls} reads, ${config.limits.maxAdvisorOutputTokens} output tokens`,
 		`redaction: ${config.security.redactKnownSecrets ? "on" : "off"}`,
 	].join("\n");
 }

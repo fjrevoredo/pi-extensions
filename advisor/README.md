@@ -16,7 +16,9 @@ Use these commands:
 - `/advisor status` shows the model, limits, counters, and last safe error.
 - `/advisor config` shows the redacted global configuration.
 
-The default configuration is disabled. The default limits are 3 consultations per agent run, 12 per session, 6 advisor turns, 8 read-only tool calls, 96 KiB context, 1,600 output tokens per advisor turn, and a 120 second deadline.
+The default configuration is disabled. The default limits are 3 consultations per agent run, 12 per session, 6 advisor turns, 8 read-only tool calls, 96 KiB context, 4,000 output tokens per advisor turn, and a 120 second deadline.
+
+`maxAdvisorOutputTokens` is a per-turn cap, and on OpenAI-shaped APIs the advisor's reasoning is spent from it too. A turn the provider cuts off is retried once with a brevity notice; a second one reports `truncated`, whose remedy is raising this limit. Changing a default here does not reach an `advisor.json` that already exists — edit that file to pick the new value up.
 
 A model whose id contains a slash — Vertex's `publishers/google/…` — cannot currently be configured: the stored reference must be exactly `provider/id` with one slash.
 

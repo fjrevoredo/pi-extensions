@@ -130,7 +130,7 @@ test("formatConfig reports the fields a user needs to see, and no secrets", () =
 		"enabled: true",
 		"model: anthropic/big",
 		"thinking: high",
-		"limits: 3/run, 12/session, 6 turns, 8 reads",
+		"limits: 3/run, 12/session, 6 turns, 8 reads, 4000 output tokens",
 		"redaction: on",
 	]);
 	assert.ok(formatConfig(valid({ model: undefined })).includes("model: not configured"));
