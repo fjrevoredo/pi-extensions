@@ -208,7 +208,6 @@ export async function runAdvisorLoop(input: {
 				if (truncations > 1) return { usage, readOnlyToolCalls, failure: "truncated" };
 				context.messages.push({ role: "user", content: TRUNCATION_NOTICE, timestamp: now() });
 				correctionOnly = true;
-				submitted = false;
 				continue;
 			}
 			context.messages.push(response);

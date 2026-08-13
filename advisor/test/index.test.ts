@@ -363,6 +363,26 @@ test("a failed consultation records which model produced it and which refusal it
 	assert.ok((h.notifications.at(-1)?.message ?? "").includes("last error: invalid_response (no_tool_call)"));
 });
 
+test("a consultation that runs out of output tokens twice reports truncated to the driver", async () => {
+	// End to end for the new failure: the loop's `truncated` has to reach the driver
+	// as its own sentence, not as invalid_response's, because the remedy differs.
+	const h = await harness({
+		config: configured(),
+		available: [MODEL],
+		completions: [
+			{ role: "assistant", content: [{ type: "text", text: "the risk here is that" }], stopReason: "length" },
+			{ role: "assistant", content: [{ type: "text", text: "the risk here is that" }], stopReason: "length" },
+		],
+	});
+	const result = await h.consult();
+	assert.equal(h.completeCalls, 2, "one retry, then it gives up");
+	assert.equal(result.details.failure, "truncated");
+	assert.equal(result.content[0]?.text, FAILURE_MESSAGES.truncated);
+	assert.equal(result.content[0]?.text, "Advisor response exceeded its output budget. Continue with local evidence.");
+	assert.equal(result.details.model, "anthropic/big");
+	assert.equal(result.details.detail, undefined, "truncated is already specific; it needs no sub-reason");
+});
+
 test("session_start restores the sub-reason with the error it belongs to", async () => {
 	const h = await harness({ config: configured() });
 	await h.lifecycle("session_start", [

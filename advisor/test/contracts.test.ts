@@ -156,8 +156,9 @@ test("SYSTEM_PROMPT and AdviceSchema do not drift apart", () => {
 
 test("SYSTEM_PROMPT asks for an advice that fits the output budget", () => {
 	// The schema's own bounds allow roughly 36,600 characters of advice, which no
-	// per-turn cap can cover. The prompt carries the realistic bounds instead, and
-	// they are the same ones the loop's truncation notice repeats after a length stop.
+	// per-turn cap can cover. The prompt carries realistic bounds instead. The loop's
+	// truncation notice asks for a stricter version of the same thing after a length
+	// stop, because by then one budget has already been spent.
 	assert.ok(SYSTEM_PROMPT.includes("under 400 characters"));
 	assert.ok(SYSTEM_PROMPT.includes("three or four rationale entries"));
 	assert.ok(SYSTEM_PROMPT.includes("omit the optional per-risk evidence arrays"));
