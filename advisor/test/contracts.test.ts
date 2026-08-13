@@ -95,13 +95,42 @@ test("validateAdvice validates each risk, including its optional evidence", () =
 
 test("formatAdvice puts the outcome first and omits empty sections", () => {
 	const formatted = formatAdvice(advice);
-	assert.ok(formatted.startsWith("Advisor outcome: course_correct\nSummary: Keep the API boundary."));
+	assert.ok(
+		formatted.startsWith("Advisor outcome: course_correct (confidence: high)\nSummary: Keep the API boundary."),
+	);
 	assert.ok(formatted.includes("Recommended actions:\n1. Move retry ownership to the caller."));
 	assert.ok(formatted.includes("Verification: Run the duplicate-write integration test."));
 	const bare = formatAdvice({ ...advice, outcome: "on_track", risks: [], recommendedActions: [], verification: [] });
-	assert.equal(bare, "Advisor outcome: on_track\nSummary: Keep the API boundary.");
+	assert.equal(bare, "Advisor outcome: on_track (confidence: high)\nSummary: Keep the API boundary.");
 	// Actions are numbered from 1, because the advisor is asked for an ordered plan.
 	assert.ok(formatAdvice({ ...advice, recommendedActions: ["a", "b"] }).includes("1. a\n2. b"));
+});
+
+test("formatAdvice shows the driver the risks and always the confidence", () => {
+	// Surfacing risk is most of why the tool exists, and the driver model never sees
+	// `details` — so a risk that reaches only `details` reaches nobody.
+	const risks: Advice["risks"] = [
+		{ severity: "medium", description: "The wording would cause spurious permission prompts.", evidence: ["a.ts"] },
+		{ severity: "low", description: "The identity text drifts from the README." },
+	];
+	const formatted = formatAdvice({ ...advice, risks });
+	assert.ok(
+		formatted.includes(
+			"Risks:\n- medium: The wording would cause spurious permission prompts.\n- low: The identity text drifts from the README.",
+		),
+		"each risk is one severity-prefixed line, in the order the advisor gave them",
+	);
+	// Why before what: the risks block precedes the recommended actions.
+	assert.ok(formatted.indexOf("Risks:") < formatted.indexOf("Recommended actions:"));
+	// Citations stay in details: they are the advisor's evidence, not the driver's
+	// action items, and they would roughly triple this block.
+	assert.ok(!formatted.includes("a.ts"), "per-risk evidence is not part of the driver-facing text");
+
+	// An on_track result carries no risks by construction, and still reports how
+	// confident the advisor was.
+	const clear = formatAdvice({ ...advice, outcome: "on_track", risks: [], confidence: "low" });
+	assert.ok(!clear.includes("Risks:"));
+	assert.ok(clear.startsWith("Advisor outcome: on_track (confidence: low)"));
 });
 
 test("SYSTEM_PROMPT and AdviceSchema do not drift apart", () => {

@@ -314,7 +314,10 @@ test("a permitted consultation wires the loop up and returns formatted advice", 
 	});
 	const result = await h.consult();
 	assert.equal(h.completeCalls, 1);
-	assert.match(result.content[0]?.text ?? "", /^Advisor outcome: on_track\nSummary: The boundary holds\./);
+	assert.match(
+		result.content[0]?.text ?? "",
+		/^Advisor outcome: on_track \(confidence: high\)\nSummary: The boundary holds\./,
+	);
 	assert.equal(result.details.failure, undefined);
 	assert.equal(result.details.model, "anthropic/big", "a success attributes the model it used");
 	assert.deepEqual(result.details.advice, ADVICE);

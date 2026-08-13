@@ -187,8 +187,27 @@ export function validateAdvice(value: unknown): Advice | undefined {
 	return typed;
 }
 
+/**
+ * What the driver actually reads. Everything else stays in `details`, which the
+ * driver model never sees.
+ *
+ * Risks and the confidence rating are here because surfacing risk is most of why
+ * the tool exists: a consultation that found two medium risks used to hand the
+ * driver an outcome and a summary, and the risks lived only in the transcript.
+ * They are printed *before* the recommended actions so the driver reads why before
+ * what.
+ *
+ * Per-risk `evidence` arrays stay out: they are the advisor's citations rather than
+ * the driver's action items, and including them would roughly triple this block.
+ */
 export function formatAdvice(advice: Advice): string {
-	const lines = [`Advisor outcome: ${advice.outcome}`, `Summary: ${advice.summary}`];
+	const lines = [
+		`Advisor outcome: ${advice.outcome} (confidence: ${advice.confidence})`,
+		`Summary: ${advice.summary}`,
+	];
+	if (advice.risks.length) {
+		lines.push("Risks:", ...advice.risks.map((risk) => `- ${risk.severity}: ${risk.description}`));
+	}
 	if (advice.recommendedActions.length) {
 		lines.push(
 			"Recommended actions:",

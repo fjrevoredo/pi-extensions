@@ -2,7 +2,9 @@
 
 `advisor/` adds one driver-facing tool: `consult_advisor({})`.
 
-The configured advisor can inspect bounded repository text through private `read`, `grep`, `find`, and `ls` tools. It cannot edit files, run shell commands, use the network directly, call other extensions, or contact the user. It returns one validated advice object. The driver must verify the advice and make all changes.
+The configured advisor can inspect bounded repository text through private `read`, `grep`, `find`, and `ls` tools. It cannot edit files, run shell commands, use the network directly, call other extensions, or contact the user. It submits exactly one validated advice object. The driver must verify the advice and make all changes.
+
+The driver reads a text rendering of that object: the outcome with its confidence rating, the summary, the risks as one `severity: description` line each, the numbered recommended actions, and the verification steps. The advisor's rationale, assumptions and per-risk evidence citations stay in the tool result's `details`, alongside the model, duration, read count and token usage — the session records them, the driver model does not see them.
 
 ## Setup
 
