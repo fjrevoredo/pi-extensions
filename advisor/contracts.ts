@@ -94,6 +94,7 @@ export type AdvisorFailure =
 	| "aborted"
 	| "timeout"
 	| "invalid_response"
+	| "truncated"
 	| "provider_error";
 
 export interface AdvisorDetails {

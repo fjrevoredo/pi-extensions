@@ -21,7 +21,7 @@ const limits = (over: Partial<AdvisorConfig["limits"]>): AdvisorConfig["limits"]
 
 test("every failure has a message and the driver is always told to continue", () => {
 	const keys = Object.keys(FAILURE_MESSAGES);
-	assert.equal(keys.length, 9, "a new AdvisorFailure needs a message and a test row");
+	assert.equal(keys.length, 10, "a new AdvisorFailure needs a message and a test row");
 	for (const [key, message] of Object.entries(FAILURE_MESSAGES)) {
 		assert.ok(message.length > 0, `${key} has no message`);
 		assert.ok(
@@ -32,7 +32,7 @@ test("every failure has a message and the driver is always told to continue", ()
 	}
 });
 
-test("the nine failure texts are exactly these, verbatim (T6)", () => {
+test("the ten failure texts are exactly these, verbatim (T6)", () => {
 	assert.deepEqual(FAILURE_MESSAGES, {
 		disabled: "Advisor is disabled. Continue with local evidence.",
 		unconfigured: "Advisor is not configured. Continue with local evidence.",
@@ -42,11 +42,15 @@ test("the nine failure texts are exactly these, verbatim (T6)", () => {
 		aborted: "Advisor consultation did not complete. Continue with local evidence.",
 		timeout: "Advisor consultation did not complete. Continue with local evidence.",
 		invalid_response: "Advisor did not return validated advice. Continue with local evidence.",
+		truncated: "Advisor response exceeded its output budget. Continue with local evidence.",
 		provider_error: "Advisor consultation failed. Continue with local evidence.",
 	});
 	// Shared on purpose: from the driver's side an abort and a timeout are the same
 	// event, and details.failure keeps them apart for anyone reading the transcript.
 	assert.equal(FAILURE_MESSAGES.aborted, FAILURE_MESSAGES.timeout);
+	// Not shared, on purpose: `truncated` is the one whose remedy is a configuration
+	// change, so it must not be readable as "the advisor wrote something invalid".
+	assert.notEqual(FAILURE_MESSAGES.truncated, FAILURE_MESSAGES.invalid_response);
 });
 
 test("decideConsultation admits a configured, enabled advisor with budget left", () => {

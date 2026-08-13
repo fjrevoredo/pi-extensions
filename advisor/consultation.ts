@@ -31,6 +31,11 @@ import { parseModel } from "./model-reference.ts";
  * deliberate: it reads a live `AbortSignal`, and checking it first means an
  * already-cancelled call does no filesystem I/O at all. `decideConsultation`
  * covers rows 2–5; `checkAdvisorModel` covers rows 6–7.
+ *
+ * The table is the *pre-flight* chain only. `aborted`, `timeout`,
+ * `invalid_response`, `truncated` and `provider_error` are loop-level outcomes
+ * reported by `advisor-loop.ts` after a provider has been contacted, so they have
+ * no row and no precedence relative to the gates above; they only need a message.
  */
 export const FAILURE_MESSAGES: Record<AdvisorFailure, string> = {
 	disabled: "Advisor is disabled. Continue with local evidence.",
@@ -45,6 +50,9 @@ export const FAILURE_MESSAGES: Record<AdvisorFailure, string> = {
 	aborted: "Advisor consultation did not complete. Continue with local evidence.",
 	timeout: "Advisor consultation did not complete. Continue with local evidence.",
 	invalid_response: "Advisor did not return validated advice. Continue with local evidence.",
+	// Its own sentence rather than sharing `invalid_response`'s, because the user
+	// action differs: raise `maxAdvisorOutputTokens`.
+	truncated: "Advisor response exceeded its output budget. Continue with local evidence.",
 	provider_error: "Advisor consultation failed. Continue with local evidence.",
 };
 

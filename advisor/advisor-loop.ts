@@ -26,12 +26,20 @@ import { type AdvisorToolCall, classifyTurn, isPrivateTool, isRepositoryTool, PR
  * A budget that runs out is not an error: the advisor is told, in the tool result,
  * that it must submit now. Telling it beats truncating it, because an advisor that
  * knows it is out of reads writes a conclusion rather than being cut off
- * mid-thought.
+ * mid-thought. The output budget gets the same treatment: a turn the provider
+ * stopped with `stopReason: "length"` is retried once, told how long its advice may
+ * be, and restricted to a lone submission. The truncated turn is *dropped* rather
+ * than appended, because a turn cut off mid-tool-call leaves a `toolCall` part with
+ * no matching `toolResult`, which OpenAI-shaped APIs reject on the next request. A
+ * second length stop is `truncated`, which is the one failure whose remedy is a
+ * configuration change (`maxAdvisorOutputTokens`) rather than a retry.
  */
 const INVALID_SUBMISSION_NOTICE =
 	"Advice was not accepted because one or more required fields were missing or invalid. Submit one complete advice object again. Do not call repository tools.";
 const READ_BUDGET_NOTICE =
 	"Read-only tool budget is exhausted. Submit advice now without another repository tool call.";
+const TRUNCATION_NOTICE =
+	"The previous turn was cut off by the output limit. Submit one complete submit_advice call now. Keep the summary under 400 characters, and use at most three rationale entries, three recommended actions, and three risks. Omit the optional evidence arrays.";
 
 function addUsage(total: Usage | undefined, usage: Usage | undefined): Usage | undefined {
 	if (!usage) return total;
@@ -106,10 +114,10 @@ async function runRepositoryCalls(input: {
  * Every decision it makes is delegated — the turn policy to turn-policy.ts, the
  * path filter to path-policy.ts, advice validation to contracts.ts.
  *
- * Deviates from F5's ~40 lines: what remains is five pieces of loop state
- * (usage, read count, and the three submission flags) that a further split would
- * have to thread through helpers and read back, which is more error-prone than
- * the sequence it replaces, not less.
+ * Deviates from F5's ~40 lines: what remains is six pieces of loop state
+ * (usage, read count, the two retry counters and the two submission flags) that a
+ * further split would have to thread through helpers and read back, which is more
+ * error-prone than the sequence it replaces, not less.
  */
 export async function runAdvisorLoop(input: {
 	registry: CompletionRegistry;
@@ -127,7 +135,7 @@ export async function runAdvisorLoop(input: {
 	advice?: Advice;
 	usage?: Usage;
 	readOnlyToolCalls: number;
-	failure?: "aborted" | "timeout" | "invalid_response" | "provider_error";
+	failure?: "aborted" | "timeout" | "invalid_response" | "truncated" | "provider_error";
 }> {
 	const now = input.now ?? Date.now;
 	const timeout = new AbortController();
@@ -158,12 +166,24 @@ export async function runAdvisorLoop(input: {
 	let readOnlyToolCalls = 0;
 	let submitted = false;
 	let invalidSubmissions = 0;
+	let truncations = 0;
 	let correctionOnly = false;
 	try {
 		for (let turn = 0; turn < input.config.limits.maxAdvisorTurns; turn += 1) {
 			signal.throwIfAborted();
 			const response = await input.registry.complete(input.model, context, options);
 			usage = addUsage(usage, response.usage);
+			// Checked before classifyTurn, and before the response is appended: a
+			// length-stopped turn is retryable, and the partial turn itself must not
+			// enter the conversation. See the header.
+			if (response.stopReason === "length") {
+				truncations += 1;
+				if (truncations > 1) return { usage, readOnlyToolCalls, failure: "truncated" };
+				context.messages.push({ role: "user", content: TRUNCATION_NOTICE, timestamp: now() });
+				correctionOnly = true;
+				submitted = false;
+				continue;
+			}
 			context.messages.push(response);
 			const turnResult = classifyTurn(response.content, { correctionOnly });
 			if (turnResult.kind === "invalid") return { usage, readOnlyToolCalls, failure: "invalid_response" };
