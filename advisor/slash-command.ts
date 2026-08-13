@@ -79,19 +79,26 @@ export interface AdvisorStatus {
 	run: number;
 	attempted: number;
 	lastError?: AdvisorFailure;
+	/** The sub-reason recorded with that error, when it had one (A7). */
+	lastErrorDetail?: string;
 }
 
 /**
  * The `/advisor status` block. Reports the session override and the on-disk value
  * separately: they disagree whenever `/advisor on|off` has been used, and which
  * one is winning is the question this block exists to answer.
+ *
+ * The last error carries its sub-reason in parentheses when it has one, because
+ * `invalid_response` alone is six different events (`advisor-loop.ts`'s
+ * `AdvisorFailureDetail`) and only one of them is worth acting on.
  */
 export function formatAdvisorStatus(status: AdvisorStatus): string {
 	const { config } = status;
 	const budget =
 		`consultations: ${status.run}/${config.limits.maxConsultationsPerRun} run, ` +
 		`${status.attempted}/${config.limits.maxConsultationsPerSession} session`;
-	const lastError = status.lastError ? `\nlast error: ${status.lastError}` : "";
+	const detail = status.lastErrorDetail ? ` (${status.lastErrorDetail})` : "";
+	const lastError = status.lastError ? `\nlast error: ${status.lastError}${detail}` : "";
 	return `${formatConfig(config)}\nsession enabled: ${status.sessionEnabled ?? config.enabled}\n${budget}${lastError}`;
 }
 

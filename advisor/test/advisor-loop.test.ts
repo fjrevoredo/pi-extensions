@@ -244,6 +244,7 @@ test("rejects every non-submission call during the correction turn", async () =>
 		evidence: "task",
 	});
 	assert.equal(result.failure, "invalid_response");
+	assert.equal(result.detail, "correction_violation", "which of the six refusals it was is recorded (A7)");
 	assert.equal(result.readOnlyToolCalls, 0);
 });
 
@@ -397,6 +398,7 @@ test("a length stop restricts the retry to a lone submission", async () => {
 	const result = await loop(registry);
 	assert.equal(requests.length, 2, "the retry happened");
 	assert.equal(result.failure, "invalid_response", "and correctionOnly was in force for it");
+	assert.equal(result.detail, "correction_violation");
 	assert.equal(result.readOnlyToolCalls, 0, "so the refused read never ran");
 });
 
@@ -416,13 +418,11 @@ test("the truncation and correction budgets are counted independently", async ()
 
 test("rejects unknown or mixed private tool calls", async () => {
 	const config = { ...defaultConfig(), enabled: true, model: "test/advisor", thinking: "high" as const };
-	for (const content of [
-		[{ type: "toolCall" as const, id: "bad", name: "bash", arguments: {} }],
-		[
-			{ type: "toolCall" as const, id: "read", name: "read", arguments: { path: "README.md" } },
-			{ type: "toolCall" as const, id: "submit", name: "submit_advice", arguments: { advice: validAdvice } },
-		],
-	]) {
+	const cases: Array<[ToolCallPart[], string]> = [
+		[[toolCall("bad", "bash")], "unknown_tool"],
+		[[toolCall("read", "read", { path: "README.md" }), submitCall("submit", validAdvice)], "mixed_submission"],
+	];
+	for (const [content, detail] of cases) {
 		const registry = {
 			async complete() {
 				return {
@@ -454,5 +454,8 @@ test("rejects unknown or mixed private tool calls", async () => {
 			evidence: "task",
 		});
 		assert.equal(result.failure, "invalid_response");
+		// Both are invalid_response to the driver, and they are told apart in the
+		// transcript by the reason the loop refused them.
+		assert.equal(result.detail, detail);
 	}
 });

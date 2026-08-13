@@ -104,6 +104,12 @@ export interface AdvisorDetails {
 	usage?: Usage;
 	advice?: Advice;
 	failure?: AdvisorFailure;
+	/**
+	 * Which refusal an `invalid_response` was, from `advisor-loop.ts`'s closed
+	 * `AdvisorFailureDetail` vocabulary. Typed as a string here so this module keeps
+	 * pointing only at the schemas; the loop owns the vocabulary.
+	 */
+	detail?: string;
 }
 
 export function defaultConfig(): AdvisorConfig {

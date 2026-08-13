@@ -78,8 +78,15 @@ export function toolCallsIn(content: readonly unknown[]): AdvisorToolCall[] {
 	);
 }
 
+/**
+ * Why a turn was refused. A closed vocabulary rather than a message, because it is
+ * recorded in the session journal: it says which rule refused the turn without
+ * persisting anything the advisor wrote (A7).
+ */
+export type InvalidTurnReason = "no_tool_call" | "mixed_submission" | "correction_violation";
+
 export type TurnClassification =
-	| { kind: "invalid" }
+	| { kind: "invalid"; reason: InvalidTurnReason }
 	| { kind: "submit"; call: AdvisorToolCall }
 	/**
 	 * A non-submission turn. Each call still has to be admitted individually by
@@ -103,12 +110,14 @@ export type TurnClassification =
  */
 export function classifyTurn(content: readonly unknown[], options: { correctionOnly: boolean }): TurnClassification {
 	const calls = toolCallsIn(content);
-	if (calls.length === 0) return { kind: "invalid" };
+	if (calls.length === 0) return { kind: "invalid", reason: "no_tool_call" };
 
 	const submissions = calls.filter((call) => call.name === SUBMIT_ADVICE);
-	if (submissions.length > 1 || (submissions.length === 1 && calls.length !== 1)) return { kind: "invalid" };
+	if (submissions.length > 1 || (submissions.length === 1 && calls.length !== 1))
+		return { kind: "invalid", reason: "mixed_submission" };
 
-	if (options.correctionOnly && (calls.length !== 1 || calls[0]?.name !== SUBMIT_ADVICE)) return { kind: "invalid" };
+	if (options.correctionOnly && (calls.length !== 1 || calls[0]?.name !== SUBMIT_ADVICE))
+		return { kind: "invalid", reason: "correction_violation" };
 
 	const only = calls[0];
 	if (submissions.length === 1 && only) return { kind: "submit", call: only };

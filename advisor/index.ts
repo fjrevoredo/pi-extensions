@@ -57,6 +57,8 @@ interface SessionState {
 	run: number;
 	enabled?: boolean;
 	lastError?: AdvisorFailure;
+	/** The sub-reason for the last error, when it had one (A7). */
+	lastErrorDetail?: string;
 }
 
 /**
@@ -71,9 +73,15 @@ interface AdvisorDeps {
 	agentDirectory: () => string;
 }
 
-function fail(failure: AdvisorFailure, state: SessionState, durationMs = 0): { text: string; details: AdvisorDetails } {
+function fail(
+	failure: AdvisorFailure,
+	state: SessionState,
+	durationMs = 0,
+	detail?: string,
+): { text: string; details: AdvisorDetails } {
 	state.lastError = failure;
-	return { text: FAILURE_MESSAGES[failure], details: { durationMs, readOnlyToolCalls: 0, failure } };
+	state.lastErrorDetail = detail;
+	return { text: FAILURE_MESSAGES[failure], details: { durationMs, readOnlyToolCalls: 0, failure, detail } };
 }
 
 async function resolveRoot(pi: ExtensionAPI, cwd: string, signal?: AbortSignal): Promise<string> {
@@ -104,13 +112,22 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 		state.run = 0;
 		state.enabled = undefined;
 		state.lastError = undefined;
+		state.lastErrorDetail = undefined;
+		// Unknown keys are ignored rather than rejected, which is what lets a journal
+		// written by an older version of this extension still restore.
 		for (const entry of ctx.sessionManager.getBranch()) {
 			if (entry.type !== "custom" || entry.customType !== ENTRY_TYPE) continue;
 			if (!entry.data || typeof entry.data !== "object") continue;
-			const data = entry.data as Partial<SessionState>;
+			const data = entry.data as Partial<SessionState> & { detail?: unknown };
 			if (typeof data.attempted === "number") state.attempted = data.attempted;
 			if (typeof data.enabled === "boolean") state.enabled = data.enabled;
-			if (typeof data.lastError === "string") state.lastError = data.lastError as AdvisorFailure;
+			// The detail belongs to the error it was recorded with, so it is restored
+			// with it — including the absent case, or a later plain failure would keep
+			// an earlier failure's sub-reason.
+			if (typeof data.lastError === "string") {
+				state.lastError = data.lastError as AdvisorFailure;
+				state.lastErrorDetail = typeof data.detail === "string" ? data.detail : undefined;
+			}
 		}
 	};
 	pi.on("session_start", async (_event, ctx) => restore(ctx));
@@ -148,6 +165,7 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 					run: state.run,
 					attempted: state.attempted,
 					lastError: state.lastError,
+					lastErrorDetail: state.lastErrorDetail,
 				});
 				if (ctx.hasUI) ctx.ui.notify(status, "info");
 				else console.log(status);
@@ -208,13 +226,34 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 		async execute(_id, _params, signal, _onUpdate, ctx) {
 			const parentSignal = signal && ctx.signal ? AbortSignal.any([signal, ctx.signal]) : (signal ?? ctx.signal);
 			const started = Date.now();
-			const failureResult = (failure: AdvisorFailure, readOnlyToolCalls = 0, usage?: Usage) => {
-				const safe = fail(failure, state, Date.now() - started);
-				pi.appendEntry(ENTRY_TYPE, { attempted: state.attempted, enabled: state.enabled, lastError: failure });
+			/**
+			 * `model` and `detail` are passed in rather than read here: the model is only
+			 * known once the configuration has cleared its gates, and the detail is the
+			 * loop's own closed vocabulary. Both reach `details` *and* the journal — a
+			 * failed consultation used to record neither, so the transcript said a
+			 * consultation failed without saying why or which model produced it (A7).
+			 */
+			const failureResult = (
+				failure: AdvisorFailure,
+				extra: { readOnlyToolCalls?: number; usage?: Usage; model?: string; detail?: string } = {},
+			) => {
+				const safe = fail(failure, state, Date.now() - started, extra.detail);
+				pi.appendEntry(ENTRY_TYPE, {
+					attempted: state.attempted,
+					enabled: state.enabled,
+					lastError: failure,
+					...(extra.detail ? { detail: extra.detail } : {}),
+					...(extra.model ? { model: extra.model } : {}),
+				});
 				return {
 					content: [{ type: "text" as const, text: safe.text }],
-					details: { ...safe.details, readOnlyToolCalls, usage },
-					usage,
+					details: {
+						...safe.details,
+						readOnlyToolCalls: extra.readOnlyToolCalls ?? 0,
+						usage: extra.usage,
+						...(extra.model ? { model: extra.model } : {}),
+					},
+					usage: extra.usage,
 				};
 			};
 			// Row 1 of consultation.ts's precedence table, checked here and before the
@@ -243,7 +282,7 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 						),
 					),
 			});
-			if ("failure" in checked) return failureResult(checked.failure);
+			if ("failure" in checked) return failureResult(checked.failure, { model: config.model });
 			state.run += 1;
 			state.attempted += 1;
 			pi.appendEntry(ENTRY_TYPE, { attempted: state.attempted, enabled: state.enabled });
@@ -265,9 +304,15 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 					signal: parentSignal,
 				});
 				if (!result.advice) {
-					return failureResult(result.failure ?? "invalid_response", result.readOnlyToolCalls, result.usage);
+					return failureResult(result.failure ?? "invalid_response", {
+						readOnlyToolCalls: result.readOnlyToolCalls,
+						usage: result.usage,
+						model: config.model,
+						detail: result.detail,
+					});
 				}
 				state.lastError = undefined;
+				state.lastErrorDetail = undefined;
 				const details: AdvisorDetails = {
 					model: config.model,
 					durationMs: Date.now() - started,
@@ -286,7 +331,7 @@ export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDir
 					usage: result.usage,
 				};
 			} catch {
-				return failureResult(parentSignal?.aborted ? "aborted" : "provider_error");
+				return failureResult(parentSignal?.aborted ? "aborted" : "provider_error", { model: config.model });
 			}
 		},
 		renderCall(_args, theme) {

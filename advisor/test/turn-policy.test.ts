@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	type AdvisorToolCall,
 	classifyTurn,
+	type InvalidTurnReason,
 	isPrivateTool,
 	isRepositoryTool,
 	PRIVATE_TOOL_NAMES,
@@ -62,13 +63,25 @@ interface Row {
 	correctionOnly: boolean;
 	/** The expected kind, or the expected `submit` call id. `null` means invalid. */
 	expected: null | "calls" | string;
+	/**
+	 * Which rule refused an invalid turn. Set on exactly the `null` rows: the reason
+	 * is journalled, so a row that starts being refused by a *different* rule has to
+	 * fail rather than stay green (T8).
+	 */
+	reason?: InvalidTurnReason;
 }
 
 const TABLE: Row[] = [
 	// T8: `null` expectations are spelled out rather than left as "not the happy
 	// path", so a row that starts returning a classification cannot pass quietly.
-	{ label: "empty turn", content: [], correctionOnly: false, expected: null },
-	{ label: "text only — the advisor is required to act", content: [text()], correctionOnly: false, expected: null },
+	{ label: "empty turn", content: [], correctionOnly: false, expected: null, reason: "no_tool_call" },
+	{
+		label: "text only — the advisor is required to act",
+		content: [text()],
+		correctionOnly: false,
+		expected: null,
+		reason: "no_tool_call",
+	},
 	{ label: "one read", content: [call("read")], correctionOnly: false, expected: "calls" },
 	{ label: "two reads", content: [call("read", "a"), call("grep", "b")], correctionOnly: false, expected: "calls" },
 	{ label: "text plus a read", content: [text(), call("read")], correctionOnly: false, expected: "calls" },
@@ -90,37 +103,55 @@ const TABLE: Row[] = [
 		content: [call(SUBMIT_ADVICE, "a"), call(SUBMIT_ADVICE, "b")],
 		correctionOnly: false,
 		expected: null,
+		reason: "mixed_submission",
 	},
 	{
 		label: "submission beside a read",
 		content: [call(SUBMIT_ADVICE, "s"), call("read", "r")],
 		correctionOnly: false,
 		expected: null,
+		reason: "mixed_submission",
 	},
 	{
 		label: "read before a submission",
 		content: [call("read", "r"), call(SUBMIT_ADVICE, "s")],
 		correctionOnly: false,
 		expected: null,
+		reason: "mixed_submission",
 	},
 
 	// After a rejected submission the advisor may do exactly one thing: resubmit.
 	{ label: "correction: resubmit", content: [call(SUBMIT_ADVICE, "s")], correctionOnly: true, expected: "s" },
-	{ label: "correction: a read instead", content: [call("read")], correctionOnly: true, expected: null },
+	{
+		label: "correction: a read instead",
+		content: [call("read")],
+		correctionOnly: true,
+		expected: null,
+		reason: "correction_violation",
+	},
 	{
 		label: "correction: two calls",
 		content: [call(SUBMIT_ADVICE, "a"), call("read", "r")],
 		correctionOnly: true,
 		expected: null,
+		// mixed_submission, not correction_violation: the shape rule is checked first
+		// and would have refused this turn outside a correction round too.
+		reason: "mixed_submission",
 	},
-	{ label: "correction: nothing at all", content: [text()], correctionOnly: true, expected: null },
+	{
+		label: "correction: nothing at all",
+		content: [text()],
+		correctionOnly: true,
+		expected: null,
+		reason: "no_tool_call",
+	},
 ];
 
 test("classifyTurn admits exactly what one turn may do", () => {
 	for (const row of TABLE) {
 		const result = classifyTurn(row.content, { correctionOnly: row.correctionOnly });
 		if (row.expected === null) {
-			assert.deepEqual(result, { kind: "invalid" }, `${row.label} should be invalid`);
+			assert.deepEqual(result, { kind: "invalid", reason: row.reason }, `${row.label} should be invalid`);
 			continue;
 		}
 		if (row.expected === "calls") {
@@ -144,6 +175,7 @@ test("PRECEDENCE: the submission-shape rules are checked before the correction r
 	// would have refused it outside a correction too.
 	assert.deepEqual(classifyTurn([call(SUBMIT_ADVICE, "a"), call(SUBMIT_ADVICE, "b")], { correctionOnly: true }), {
 		kind: "invalid",
+		reason: "mixed_submission",
 	});
 	const lone = classifyTurn([call(SUBMIT_ADVICE, "s")], { correctionOnly: true });
 	assert.equal(lone.kind, "submit");

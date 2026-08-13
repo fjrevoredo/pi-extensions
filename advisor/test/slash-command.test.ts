@@ -133,6 +133,23 @@ test("the status block appends the last error only when there is one", () => {
 		formatAdvisorStatus({ config: config(), run: 0, attempted: 0, lastError: undefined }).includes("last error"),
 		false,
 	);
+	// The sub-reason is what makes an invalid_response actionable: six loop refusals
+	// share that one word (A7).
+	const detailed = formatAdvisorStatus({
+		config: config(),
+		run: 0,
+		attempted: 0,
+		lastError: "invalid_response",
+		lastErrorDetail: "schema_rejected",
+	});
+	assert.ok(detailed.endsWith("\nlast error: invalid_response (schema_rejected)"));
+	// A detail with no error to attach to shows nothing at all.
+	assert.equal(
+		formatAdvisorStatus({ config: config(), run: 0, attempted: 0, lastErrorDetail: "turn_budget" }).includes(
+			"turn_budget",
+		),
+		false,
+	);
 });
 
 test("the status block reflects a session override of a disabled file value", () => {

@@ -5,7 +5,14 @@ import { validateAdvice } from "./contracts.ts";
 import { createResolvedPathPolicy } from "./path-access.ts";
 import type { PathPolicy } from "./path-policy.ts";
 import { executeRepositoryTool } from "./repository-tools.ts";
-import { type AdvisorToolCall, classifyTurn, isPrivateTool, isRepositoryTool, PRIVATE_TOOLS } from "./turn-policy.ts";
+import {
+	type AdvisorToolCall,
+	classifyTurn,
+	type InvalidTurnReason,
+	isPrivateTool,
+	isRepositoryTool,
+	PRIVATE_TOOLS,
+} from "./turn-policy.ts";
 
 /**
  * The private consultation loop: the advisor's own agentic turn-taking, walled off
@@ -78,6 +85,24 @@ interface CompletionRegistry {
 }
 
 /**
+ * Which of the loop's six refusals produced an `invalid_response`. `invalid_response`
+ * is one driver-facing sentence for six distinct events, and the journal recorded
+ * only that sentence's key — enough to know a consultation failed, not enough to
+ * know why (A7).
+ *
+ * A closed vocabulary, never model text, so recording it leaves the "raw provider
+ * responses are not persisted" non-goal intact. The driver-facing sentence is
+ * unchanged; this is only for `details` and `/advisor status`.
+ */
+export type AdvisorFailureDetail =
+	| InvalidTurnReason
+	| "options_unavailable"
+	| "duplicate_submission"
+	| "schema_rejected"
+	| "unknown_tool"
+	| "turn_budget";
+
+/**
  * Execute one turn's repository calls in order, appending each result to the
  * conversation. Returns the new running count, or `invalid` for a call the turn
  * policy does not admit.
@@ -136,6 +161,8 @@ export async function runAdvisorLoop(input: {
 	usage?: Usage;
 	readOnlyToolCalls: number;
 	failure?: "aborted" | "timeout" | "invalid_response" | "truncated" | "provider_error";
+	/** Which refusal this was. Set for every `invalid_response`, and only for those. */
+	detail?: AdvisorFailureDetail;
 }> {
 	const now = input.now ?? Date.now;
 	const timeout = new AbortController();
@@ -147,7 +174,7 @@ export async function runAdvisorLoop(input: {
 		input.config.limits.maxAdvisorOutputTokens,
 		signal,
 	);
-	if (!options) return { readOnlyToolCalls: 0, failure: "invalid_response" };
+	if (!options) return { readOnlyToolCalls: 0, failure: "invalid_response", detail: "options_unavailable" };
 	const context: Context = {
 		systemPrompt: input.systemPrompt,
 		messages: [{ role: "user", content: input.evidence, timestamp: now() }],
@@ -186,16 +213,19 @@ export async function runAdvisorLoop(input: {
 			}
 			context.messages.push(response);
 			const turnResult = classifyTurn(response.content, { correctionOnly });
-			if (turnResult.kind === "invalid") return { usage, readOnlyToolCalls, failure: "invalid_response" };
+			if (turnResult.kind === "invalid")
+				return { usage, readOnlyToolCalls, failure: "invalid_response", detail: turnResult.reason };
 
 			if (turnResult.kind === "submit") {
 				const call = turnResult.call;
-				if (submitted) return { usage, readOnlyToolCalls, failure: "invalid_response" };
+				if (submitted)
+					return { usage, readOnlyToolCalls, failure: "invalid_response", detail: "duplicate_submission" };
 				submitted = true;
 				const advice = validateAdvice(call.arguments.advice);
 				if (advice) return { advice, usage, readOnlyToolCalls };
 				invalidSubmissions += 1;
-				if (invalidSubmissions > 1) return { usage, readOnlyToolCalls, failure: "invalid_response" };
+				if (invalidSubmissions > 1)
+					return { usage, readOnlyToolCalls, failure: "invalid_response", detail: "schema_rejected" };
 				context.messages.push(toolResult(call.id, call.name, INVALID_SUBMISSION_NOTICE, now));
 				correctionOnly = true;
 				submitted = false;
@@ -212,9 +242,9 @@ export async function runAdvisorLoop(input: {
 				now,
 			});
 			readOnlyToolCalls = executed.readOnlyToolCalls;
-			if (executed.invalid) return { usage, readOnlyToolCalls, failure: "invalid_response" };
+			if (executed.invalid) return { usage, readOnlyToolCalls, failure: "invalid_response", detail: "unknown_tool" };
 		}
-		return { usage, readOnlyToolCalls, failure: "invalid_response" };
+		return { usage, readOnlyToolCalls, failure: "invalid_response", detail: "turn_budget" };
 	} catch {
 		if (signal.aborted) return { usage, readOnlyToolCalls, failure: timeout.signal.aborted ? "timeout" : "aborted" };
 		return { usage, readOnlyToolCalls, failure: "provider_error" };

@@ -334,6 +334,50 @@ test("a permitted consultation wires the loop up and returns formatted advice", 
 	assert.deepEqual(h.entries.at(-1)?.data, { attempted: 1, enabled: undefined, outcome: "on_track" });
 });
 
+test("a failed consultation records which model produced it and which refusal it was", async () => {
+	// `invalid_response` is one sentence for six distinct loop refusals, and the
+	// journal used to record only that key and no model at all — enough to know a
+	// consultation failed, not enough to know why (A7). The driver-facing sentence is
+	// deliberately unchanged.
+	const h = await harness({
+		config: configured(),
+		available: [MODEL],
+		completions: [{ role: "assistant", content: [{ type: "text", text: "the design looks fine to me" }] }],
+	});
+	const result = await h.consult();
+	assert.equal(result.content[0]?.text, FAILURE_MESSAGES.invalid_response);
+	assert.equal(result.details.failure, "invalid_response");
+	assert.equal(result.details.detail, "no_tool_call", "the advisor acted on nothing, which is its own refusal");
+	assert.equal(result.details.model, "anthropic/big", "a failure attributes the model that produced it");
+	assert.deepEqual(h.entries.at(-1)?.data, {
+		attempted: 1,
+		enabled: undefined,
+		lastError: "invalid_response",
+		detail: "no_tool_call",
+		model: "anthropic/big",
+	});
+	await h.runCommand("status");
+	assert.ok((h.notifications.at(-1)?.message ?? "").includes("last error: invalid_response (no_tool_call)"));
+});
+
+test("session_start restores the sub-reason with the error it belongs to", async () => {
+	const h = await harness({ config: configured() });
+	await h.lifecycle("session_start", [
+		{ type: "custom", customType: ENTRY_TYPE, data: { lastError: "invalid_response", detail: "schema_rejected" } },
+	]);
+	await h.runCommand("status");
+	assert.ok((h.notifications.at(-1)?.message ?? "").includes("last error: invalid_response (schema_rejected)"));
+
+	// A later error without a sub-reason must not inherit the earlier one.
+	await h.lifecycle("session_start", [
+		{ type: "custom", customType: ENTRY_TYPE, data: { lastError: "invalid_response", detail: "schema_rejected" } },
+		{ type: "custom", customType: ENTRY_TYPE, data: { lastError: "timeout" } },
+	]);
+	await h.runCommand("status");
+	assert.ok((h.notifications.at(-1)?.message ?? "").includes("last error: timeout"));
+	assert.ok(!(h.notifications.at(-1)?.message ?? "").includes("schema_rejected"), "the stale detail is dropped");
+});
+
 test("PRECEDENCE: an abort is reported ahead of an unreadable configuration", async () => {
 	// Both conditions hold, so only the order decides. The abort check has to come
 	// first, which is also why an already-cancelled call performs no file read at
