@@ -247,6 +247,13 @@ while IFS= read -r record; do
       entries="${rest%% *}"
       next_id="${rest##* }"
       ;;
+    *)
+      # Unreachable unless the awk program above emits a record kind this loop does not know.
+      # It is reported rather than skipped because the silent-skip version of this is a check
+      # that quietly stops asserting something and still exits 0 — the exact failure this
+      # script exists to prevent, which it would then have in itself.
+      fail "internal: unrecognized record \"${record}\" from the changelog parser"
+      ;;
   esac
 done <<<"${report}"
 
