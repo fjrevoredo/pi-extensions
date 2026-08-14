@@ -13,7 +13,7 @@ Every extension is a directory with its entrypoint at `<name>/index.ts` and its 
 - [`context-footer/`](context-footer/README.md) — two-row TUI footer with hard token-based context thresholds
 - [`advisor/`](advisor/README.md) — configured read-only technical advisor with the `consult_advisor({})` tool
 
-Engineering standard: [`docs/PI_EXTENSIONS_BEST_PRACTICES.md`](docs/PI_EXTENSIONS_BEST_PRACTICES.md).
+Engineering standard: [`docs/PI_EXTENSIONS_BEST_PRACTICES.md`](docs/PI_EXTENSIONS_BEST_PRACTICES.md). Change history: [`CHANGELOG.md`](CHANGELOG.md) — what changed in each extension, when, and what moved for the caller. Each extension's current version is the `EXTENSION_VERSION` in its own `version.ts`, and nowhere else (`D6`).
 
 ## `ask_user` option contract
 
@@ -43,7 +43,7 @@ One dependency set at the repository root:
 
 ```bash
 npm install
-git config core.hooksPath .githooks   # once per clone; runs the checks below before each commit
+git config core.hooksPath .githooks   # once per clone; runs the four checks below before each commit
 ```
 
 ## Expected validation
@@ -52,6 +52,7 @@ git config core.hooksPath .githooks   # once per clone; runs the checks below be
 npm run typecheck              # tsc --build across all four extensions
 node --test                    # the whole suite, and the extension-load gate
 npm run lint                   # biome check .
+npm run changelog              # CHANGELOG.md schema, ids, and every version.ts (D6)
 bash sync-extensions.sh --dry-run   # review, then run it without --dry-run
 ```
 
@@ -61,11 +62,11 @@ Then `/reload` inside pi and run a focused manual check of whatever changed.
 
 `node --test` is the only test runner. It needs no flags on Node 24 and takes no directory argument — run it bare from the root, or pass a file glob such as `node --test ask-user/test/*.test.ts`.
 
-The first three commands are also the pre-commit hook, so in practice only the last one is manual. `git commit --no-verify` skips the hook for a deliberate WIP commit — it does not skip CI.
+The first four commands are also the pre-commit hook, so in practice only the last one is manual. `git commit --no-verify` skips the hook for a deliberate WIP commit — it does not skip CI.
 
 ## CI
 
-`.github/workflows/ci.yml` runs one job, `checks`, on every push to `master` and every pull request. It re-runs the first three commands above as separate steps, so one run reports all three failures rather than only the first, and adds two checks that only make sense remotely:
+`.github/workflows/ci.yml` runs one job, `checks`, on every push to `master` and every pull request. It re-runs the first four commands above as separate steps, so one run reports every failure rather than only the first, and adds two checks that only make sense remotely:
 
 - `.github/scripts/check-runtime-hygiene.sh` syncs into a throwaway `HOME` and asserts that only non-test TypeScript reached the runtime directory — and that no extension entrypoint was dropped (`L7`). Run it locally any time you change the file layout.
 - `.github/scripts/check-hook-parity.sh` asserts that the pre-commit hook and the workflow run the same npm scripts.
@@ -79,4 +80,4 @@ For TUI-heavy extensions like `ask-user`, automated tests do not replace validat
 - Keep extension APIs and agent-visible tool contracts explicit.
 - Prefer small, reviewable changes.
 - Add or update inline comments when behavior is non-obvious from code alone.
-- Update this README when extensions are added, removed, renamed, or substantially repurposed.
+- Update this README when extensions are added, removed, renamed, or substantially repurposed, and record the change in `CHANGELOG.md` (`D5`, `D7`).

@@ -9,8 +9,9 @@ Read it before changing any extension. It is not advisory.
 It is deliberately **not summarised here.** This file covers only how to *work* in this repo:
 the runtime model, the setup, and what lives where. Anything that is a rule lives in the
 standard and is cited by ID (`L1`, `A5`, `C3`, …) — cite those IDs in commit messages and
-review notes too. Check §16 before re-litigating a decision, and §17 before adding something
-the standard deliberately leaves out.
+review notes too. Check §16 before re-litigating a decision, §17 before adding something the
+standard deliberately leaves out, and `CHANGELOG.md` before assuming an extension's current
+shape was designed rather than arrived at.
 
 There are no exemptions. Every extension is bound by every rule area — being small, being
 new, or not being a *gate* exempts nothing — and nothing is excluded from Biome.
@@ -48,19 +49,24 @@ you have no hook.** The hook is a ~3-second local convenience; CI is what always
 - One concern per commit, citing the rule IDs it satisfies. Sequence a multi-commit change
   cheapest and lowest-risk first, and reformat last so no file is touched twice. Every step
   should be independently revertible: stopping part-way must leave the repo consistent.
+- One entry per coherent change, which is usually several commits, written in the last one
+  along with the version bump (`D6`, `D7`). Not the first commit — an entry ahead of the tree
+  describes a change you are still allowed to abandon — and not a follow-up, which is the
+  version of this that gets forgotten. `npm run changelog` is in the hook and in CI, but it
+  checks the file's frame, not whether you wrote the entry.
 - Bring code into conformance as you touch it. Do not let a new file match old habits.
 - The hook **and CI** are the enforcement, not good intentions. If a check blocks you, fix the
   code — do not weaken the rule. `--no-verify` is for deliberate WIP commits only, and it
-  skips the hook, not CI: the same three checks run again in `.github/workflows/ci.yml`.
+  skips the hook, not CI: the same four checks run again in `.github/workflows/ci.yml`.
 - Prefer small, reviewable changes and explicit contracts over clever behaviour.
 - Do not leave temporary debug code, scratch files, or dead paths behind.
 
-Three things about a **new extension** are easy to forget, and every one of them fails
-silently rather than loudly: its `references` entry in the root `tsconfig.json` (`C3`), its
-`README.md` (`L6`), and any `sync-extensions.sh` exclusion it needs for a new kind of
-non-runtime file (`L7`, `C5`).
+Four things about a **new extension** are easy to forget, and every one of them fails silently
+rather than loudly: its `references` entry in the root `tsconfig.json` (`C3`), its `README.md`
+(`L6`), its `version.ts` (`D6`), and any `sync-extensions.sh` exclusion it needs for a new kind
+of non-runtime file (`L7`, `C5`).
 
-The third is the one that keeps happening, and not only for extensions — `.githooks/` needed
+The last is the one that keeps happening, and not only for extensions — `.githooks/` needed
 its own explicit exclusion, and so did `.github/`. Any new top-level directory does. You can
 check the outcome locally instead of reasoning about rsync patterns:
 
@@ -74,6 +80,33 @@ Two more worth knowing before you go looking: the tool schema and prompt text ar
 extension's real public API, so a schema change is a breaking change (§6); and upgrading pi
 is a defined procedure, not just a version bump (`C2`, `N1`).
 
+Five documents, and no answer lives in two of them. Open the one that answers your question:
+
+| Question | Where |
+|---|---|
+| What am I allowed to do here, and why is that the rule? | the standard, by rule id |
+| Was this alternative already considered and rejected? | standard §16 |
+| Is this missing on purpose? | standard §17 |
+| What does this extension do for the model right now? | that extension's `README.md` |
+| How do I sync, set up, and validate? | this file |
+| What changed in this extension, when, and what moved for the caller? | `CHANGELOG.md` |
+| Who wrote this exact line, and what else was in that commit? | `git log`, `git blame` |
+
+Read `CHANGELOG.md` before you change an extension — `grep` it for the extension's name and
+read that extension's entries newest first. It tells you what has already been tried in the
+code you are about to touch, which `git log` will also tell you across forty commits and the
+extension `README.md` will not tell you at all, because a README describes the current
+contract and says nothing about how it got there. Read it again when a `/reload` pass shows
+behaviour you did not expect, and when you are choosing a version segment — the previous entry
+for that extension shows what the last bump counted as.
+
+**It does not overrule §16.** If §16 records a decision, that is the answer and the changelog
+adds nothing to it. The changelog earns its read in the gap: when a shape looks deliberate and
+§16 is silent, an entry may show it was the incidental result of one specific change rather
+than a decision anyone took — which is a legitimate reason to reopen it, where §16's silence
+alone is not. **Never argue a decision in a changelog entry.** If you find yourself doing that,
+the argument belongs in §16 and the entry should cite it.
+
 ## Validation
 
 The definition of done is standard §13. In short:
@@ -82,11 +115,12 @@ The definition of done is standard §13. In short:
 npm run typecheck
 node --test
 npm run lint
+npm run changelog
 bash sync-extensions.sh --dry-run   # then sync
 ```
 
 …then `/reload` and a manual pass over the changed flow, which is mandatory for TUI
-extensions (`T10`). The first three commands are the pre-commit hook, so in practice only the
+extensions (`T10`). The first four commands are the pre-commit hook, so in practice only the
 last two are manual.
 
 `pi --list-models` is deliberately **not** in this list. It exits 0 against an extension that
