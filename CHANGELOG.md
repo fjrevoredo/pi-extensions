@@ -70,9 +70,30 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0018
+Next id: 0019
 
 ---
+
+## 0018 — Harden the CI install and clear the quality gate's findings
+
+Date: 2026-08-14T09:40:22+02:00
+Scope: repo, permission-gate 1.0.2
+
+`npm ci` ran dependency lifecycle scripts, which nothing in this tree needs and which hands
+arbitrary code execution to anything in the transitive dependency tree. It now runs with
+`--ignore-scripts`, verified against a clean install: every check still passes.
+
+`permission-gate`'s recursive-removal and `git clean -f` rules matched a bundled short flag with
+`-[a-z]*r[a-z]*`, where both stars can match the letter between them, so every `r` in a long flag
+is a place the engine can restart. Measured before the change: a 1,000-character flag took 2 ms, 2,000
+took 7 ms, 4,000 took 28 ms and 8,000 took 98 ms — quadratic, on the one extension where blocking the
+prompt is a safety failure rather than a slow response. Excluding the letter from the class before it
+pins the match to the first occurrence, which is linear and measures flat. The languages are identical,
+checked over 904,854 generated commands, and no rule changed which commands it matches (`P3`).
+
+`ask-user`'s width measurement tested a character class of zero-width code points and `advisor`'s
+entrypoint took an object literal as a parameter default; both became plainer constructs that no
+longer need a suppression comment to defend. Neither changed behaviour, so neither moved a version.
 
 ## 0017 — Give every extension a version, and this repository a changelog
 

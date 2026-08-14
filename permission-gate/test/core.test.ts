@@ -28,6 +28,12 @@ interface RuleCase {
 const CASES: readonly RuleCase[] = [
 	{ command: "rm -rf dist", expectedRuleId: "filesystem-rm-recursive" },
 	{ command: "rm -r dist", expectedRuleId: "filesystem-rm-recursive" },
+	// The flag letter is not always first, and the pattern's leading class excludes it so the
+	// match is unambiguous (and linear). Both facts are invisible to `-rf`, so pin them here:
+	// a class narrowed the wrong way still passes every case above while missing these.
+	{ command: "rm -fr dist", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "rm -iRv dist", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "rm -i dist", expectedRuleId: null },
 	{ command: "rm src/*", expectedRuleId: "filesystem-rm-wildcard" },
 	{ command: "rmdir old-dir", expectedRuleId: "filesystem-rmdir" },
 	{ command: "shred secrets.txt", expectedRuleId: "filesystem-shred" },
@@ -60,6 +66,8 @@ const CASES: readonly RuleCase[] = [
 	{ command: "git push --force-with-lease", expectedRuleId: "git-force-push" },
 	{ command: "git reset --hard HEAD~1", expectedRuleId: "git-reset-hard" },
 	{ command: "git clean -fdx", expectedRuleId: "git-clean-force" },
+	{ command: "git clean -xdf", expectedRuleId: "git-clean-force" },
+	{ command: "git clean -n", expectedRuleId: null },
 	{ command: "sudo rm -r dist", expectedRuleId: "filesystem-rm-recursive" },
 	{ command: "su", expectedRuleId: "privilege-su" },
 	{ command: "su root", expectedRuleId: "privilege-su" },
@@ -73,7 +81,7 @@ const CASES: readonly RuleCase[] = [
 
 test("matches every command case to the expected rule, including the negatives", () => {
 	// Guards against a case silently disappearing from the table during a refactor.
-	assert.equal(CASES.length, 43);
+	assert.equal(CASES.length, 48);
 
 	for (const { command, expectedRuleId } of CASES) {
 		const actualRuleId = evaluateDangerousCommand(command).matchedRule?.id ?? null;

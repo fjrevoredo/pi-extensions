@@ -76,7 +76,13 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		id: "filesystem-rm-recursive",
 		label: "Recursive file removal",
 		category: "filesystem",
-		pattern: /\brm\b\s+(-[a-z]*r[a-z]*|--recursive)\b/i,
+		// The class before the `r` excludes `r` on purpose, and matches exactly what `[a-z]*r[a-z]*`
+		// matched: a bundled short flag containing at least one `r`. Excluding it pins the match to
+		// the *first* `r`, so there is one way to match rather than one per `r` position — the
+		// difference between linear and quadratic backtracking on a long non-matching flag, which
+		// would hang the gate on the one extension where hanging is a safety failure. Do not
+		// "simplify" this back to `[a-z]*`.
+		pattern: /\brm\b\s+(-[a-qs-z]*r[a-z]*|--recursive)\b/i,
 	},
 	{ id: "filesystem-rm-wildcard", label: "Wildcard file removal", category: "filesystem", pattern: /\brm\b.*\*/i },
 	{ id: "filesystem-rmdir", label: "Directory removal", category: "filesystem", pattern: /\brmdir\b/i },
@@ -211,7 +217,13 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		pattern: /\bgit\s+push\b.*(?:--force(?:-with-lease)?|-f\b)/i,
 	},
 	{ id: "git-reset-hard", label: "git reset --hard", category: "git", pattern: /\bgit\s+reset\s+--hard\b/i },
-	{ id: "git-clean-force", label: "git clean -f", category: "git", pattern: /\bgit\s+clean\s+(-[a-z]*f[a-z]*)\b/i },
+	// The class before the `f` excludes `f` for the reason `filesystem-rm-recursive` states.
+	{
+		id: "git-clean-force",
+		label: "git clean -f",
+		category: "git",
+		pattern: /\bgit\s+clean\s+(-[a-eg-z]*f[a-z]*)\b/i,
+	},
 
 	// Privilege escalation
 	// These privilege rules intentionally live after more specific destructive actions.

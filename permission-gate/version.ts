@@ -12,4 +12,4 @@
  * a fixed pattern and asserts it matches the newest changelog entry naming this extension. Keep it
  * exactly one exported const, on one line, in this form.
  */
-export const EXTENSION_VERSION = "1.0.1";
+export const EXTENSION_VERSION = "1.0.2";
