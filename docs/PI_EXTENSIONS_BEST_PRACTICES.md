@@ -1,6 +1,6 @@
 # pi Extension Best Practices
 
-**Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §15 through §18. There is no companion document.
+**Status:** Ratified and self-contained. Every rule, the evidence behind it, the decisions taken, and the alternatives rejected are recorded here — §15 through §18. There is no companion document. `CHANGELOG.md` at the repository root is not one: it records what changed and when, and states no rules (`D6`, `D7`).
 
 **Scope:** every extension in this repository — `ask-user`, `permission-gate`, `context-footer`, and `advisor`. No extension is exempt from any rule area.
 
@@ -16,7 +16,7 @@
 
 Strength is assigned by **enforceability**, not by importance. Some of the most important rules here are SHOULD — `S1` in particular — because nothing can verify them automatically. A MUST that nothing checks is just a SHOULD that devalues the real MUSTs.
 
-Of 87 rules: **31 MUST, 55 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
+Of 89 rules: **32 MUST, 56 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
 
 ---
 
@@ -414,7 +414,7 @@ CI asserts the *outcome* of the exclusion list (§14), but that does not retire 
 
 ---
 
-## 12. Documentation and comments (`D`)
+## 12. Documentation, comments, and change history (`D`)
 
 **D1 — SHOULD: open every module with a header comment stating its purpose and its boundary.**
 The best existing examples state what the module is *not*: *"Keep this module independent from pi so its contract can be tested without a TUI."*
@@ -427,6 +427,58 @@ The best existing examples state what the module is *not*: *"Keep this module in
 
 **D5 — SHOULD: update the root `README.md`** when an extension is added, removed, renamed, or repurposed, and `AGENTS.md` when the working model changes.
 
+**D6 — MUST: every extension carries `<ext>/version.ts` exporting a semver `EXTENSION_VERSION`, and the root `CHANGELOG.md` conforms to the schema it declares.**
+
+```ts
+// advisor/version.ts
+export const EXTENSION_VERSION = "2.0.0";
+```
+
+One file per extension, so there is exactly one place to answer *what does this extension currently claim to be* — one place, for the same reason `C1` keeps one manifest. **Nothing imports it and nothing is required to.** It is a record, not a runtime input. It therefore syncs into the runtime directory as ordinary non-test TypeScript and satisfies `L7`'s positive invariant unchanged; that is deliberate, because the alternative is a sync exclusion which would have to be a bare `version.ts` pattern and would silently strip a future extension that genuinely uses one at runtime — the middle of `L7`'s three exclusion mechanics, which this repository has already been bitten by.
+
+**The changelog's schema is declared in the changelog, and deliberately not repeated here.** A schema written in two places drifts, and the file's own header is the one `.github/scripts/check-changelog.sh` parses (§14). What this rule fixes is only the frame: the header exists, the explicit `Next id:` counter is there, every entry carries an id, a `Date:`, a `Scope:` and a body, the datetime is ISO 8601 with an offset, and ids are unique, contiguous, and below the counter. An id is a citable handle — `CL-7` in a commit message reads the way `L7` does — and a reused or renumbered id destroys that permanently, since the citation may already be somewhere the check cannot see.
+
+The counter is explicit rather than derived because deriving it means scanning every entry to find the maximum, which is a linear read of a file that only grows and which two agents working in parallel will both get right and still collide on. One line to read, one line to increment.
+
+**The check also asserts the one cross-file fact that makes the version mean anything: `EXTENSION_VERSION` equals the version recorded for that extension by the newest entry naming it.** Without that comparison the constant is checkable only for shape — is it three integers — and a number nothing compares against is a rule nothing asserts.
+
+**This rule covers structure and nothing else.** Whether a change earned an entry, whether the segment that moved was the right one, and whether the body is worth reading are `D7`, and no script decides them.
+
+**D7 — SHOULD: one changelog entry per coherent change, written in the commit that completes it, with the affected extensions' versions bumped in the same commit.**
+
+**A change earns an entry if and only if it moves one of three things:** an extension's agent-facing contract (§6), an extension's observable runtime behaviour, or the way an agent must work in this repository. Nothing else earns one. That trigger is a closed set rather than a standard of significance, because "was this significant enough" produces a different answer on a different day, and the whole value of the record is that it was applied the same way every time.
+
+Earns an entry:
+
+- **any change to a tool schema, `promptSnippet`, `promptGuidelines`, a tool name, or the shape of a result's `content` or `details`.** If `A11` fires, this rule fires — that is the same event described twice.
+- **any change a user or the model could notice at runtime**: a new entry in `permission-gate`'s catalogue, a changed context tier or threshold, a widened or narrowed path filter, a new failure path (`P3`, `P6`).
+- **a defect fix in a core module**, however small, when the wrong output was reachable.
+- **a conformance pass that ends with an extension structurally different** (`S1`, `L3`, `L4`) — one entry for the whole pass, not one per commit.
+- **a change to the enforcement layers, the sync, or the toolchain gates** — a new check, a new exclusion, a pi upgrade (`C2`). These name no extension and move no version; their `Scope:` is `repo`.
+
+Does not earn an entry:
+
+- **a typo, a comment, or a module header** — unless the header states a security posture and the posture changed (`P1`).
+- **a formatting-only pass.** `C4`'s "reformat last" exists precisely so these are separable; nothing observable moved.
+- **a test-only commit.** Tests are evidence about behaviour, not behaviour. When a test *finds* something, the fix earns the entry and the test rides along inside it.
+- **a docs-only commit**, including an extension `README.md`, unless it documents behaviour that is itself new — in which case the behaviour is what earned the entry. Changes to this standard are recorded by this standard: §16 for a decision, §17 for a deliberate absence.
+
+**One entry may span many commits; one commit is never split across entries.** Bringing `advisor` to conformance took 25 commits and was one change. **Write the entry in the last commit of the change — the one that makes the change true.** Not the first: an entry written ahead of the tree claims something the repository does not yet do, and `AGENTS.md` explicitly permits stopping part-way, which would leave the claim standing. Not a separate follow-up commit: that opens a window in which the tree and the record disagree, and it makes the entry the easiest thing in the change to forget, which is the failure this rule exists to prevent. **The record of a change is not a second concern from the change** — it is the same concern, which is why this does not conflict with one concern per commit.
+
+**Do not put commit hashes in the body.** They are unknown when you write, since the commit carrying the entry has not been made, and meaningless after a rebase. Name files, extensions, and rule ids, all of which are stable. The changelog's own header documents the `git log -S` searches that go the other way.
+
+**The agent making the change bumps the version, in that same final commit, once.** A change spanning six commits moves the version once, from the value it had at the start to the value it has at the end — never once per commit. A change touching two extensions moves both, under one entry, and each segment is chosen independently: a MAJOR in `ask-user` and a PATCH in `advisor` from a single entry is normal. Within one extension the segments do not accumulate — take the highest one any part of the change earned.
+
+| Segment | Moves when | Trigger |
+|---|---|---|
+| MAJOR | the agent-facing contract moved | `A11` fires — tool schema, a field `description`, `promptSnippet`, `promptGuidelines`, tool name, result shape |
+| MINOR | behaviour was added | a capability, a catalogue entry, a tier, an option the caller did not have |
+| PATCH | behaviour was corrected, or the code moved | fixes, refactors, and the documentation of existing behaviour |
+
+**MAJOR is deliberately cheap here, and that is the point.** Nothing pins to these numbers — §17 still forbids compatibility layers, there is no consumer holding a range, and there is exactly one live copy of every extension. So the trigger is set at *the model's input changed* rather than at a judgement about how breaking the break was. A rule that asks how much a break broke returns different answers on different days; §"How to read the rules" already assigns strength by mechanism rather than by importance for the same reason. Rewording a single `description` moves MAJOR, and `A2` and `N6` are the argument: descriptions materially change what the caller does.
+
+The versions the record begins at are reconstructed from history rather than invented, and `CHANGELOG.md` entry `0001` says so. There is no `0.x` phase — `0.x` conventionally promises a contract will stabilise later, which is a claim about the future nobody here is making.
+
 ---
 
 ## 13. Definition of done
@@ -436,13 +488,16 @@ A change to any extension is complete when all of the following pass:
 1. `npm run typecheck`
 2. `node --test` from the repository root — all green. This is also the **extension-load gate**: the T4 fake-`pi` harnesses call every extension's default export, so a module that cannot be imported fails here.
 3. `npm run lint`
-4. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
-5. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions). Watch for load errors here specifically: pi reports them interactively, and no non-interactive pi invocation does (§15).
-6. README/AGENTS updated if the agent-facing or maintainer-facing contract moved
+4. `npm run changelog` — the `CHANGELOG.md` schema, the id counter, and every `<ext>/version.ts` (`D6`)
+5. `bash sync-extensions.sh --dry-run` reviewed, then `bash sync-extensions.sh`
+6. `/reload` in pi, then a manual pass over the changed flow (mandatory for TUI extensions). Watch for load errors here specifically: pi reports them interactively, and no non-interactive pi invocation does (§15).
+7. README/AGENTS updated if the agent-facing or maintainer-facing contract moved — and, if this commit is the one that *completes* a change that earns an entry, the `CHANGELOG.md` entry written and every affected `EXTENSION_VERSION` bumped in this same commit (`D7`)
 
-Steps 1–3 are also run by the pre-commit hook (§14) and by CI, so in practice only 4–6 are manual.
+Steps 1–4 are also run by the pre-commit hook (§14) and by CI, so in practice only 5–7 are manual.
 
-`pi --list-models` used to be step 4, on the assumption that it detects an extension that fails to load. It does not — measured in §15 — so it has been removed rather than left in place as a check that reassures without checking.
+Step 7 is the only item on this list that can be satisfied by doing nothing. A commit part-way through a multi-commit change writes no entry and moves no version — the entry belongs to the change, not to the commit, and lands with the last one (`D7`). Step 4 still runs on every commit, because what it checks is the file's frame, which must be intact whether or not this commit touched it.
+
+`pi --list-models` used to be listed here as a mechanical step, on the assumption that it detects an extension that fails to load. It does not — measured in §15 — so it has been removed rather than left in place as a check that reassures without checking.
 
 ---
 
@@ -464,6 +519,7 @@ set -euo pipefail
 npm run typecheck
 npm test
 npm run lint
+npm run changelog
 ```
 
 Measured wall-clock on this repo: ~3 seconds.
@@ -474,7 +530,7 @@ Measured wall-clock on this repo: ~3 seconds.
 
 ### Layer 2 — CI
 
-`.github/workflows/ci.yml`, one job named `checks`, on every push to `master` and every pull request. It runs the same three npm scripts as separate steps — so one run reports all three failures rather than only the first — plus two hygiene checks that only make sense in CI.
+`.github/workflows/ci.yml`, one job named `checks`, on every push to `master` and every pull request. It runs the same four npm scripts as separate steps — so one run reports every failure rather than only the first — plus two hygiene checks that only make sense in CI.
 
 **Drift between the two layers is controlled by mechanism, not by discipline.** Neither file defines a command: the hook calls the npm scripts and so does the workflow, so there is nothing in either file to drift. `.github/scripts/check-hook-parity.sh` then asserts that they invoke the same set, because a rule nothing asserts drifts — and the hook had in fact already drifted from the scripts once, calling `node --test` and `npx biome check .` directly.
 
@@ -487,6 +543,14 @@ Three properties of that check are deliberate:
 - **Both directions.** The reverse assertion — that no entrypoint was *dropped* — catches an over-broad exclusion silently deleting a whole extension, which nothing else in the repository catches.
 
 It is CI-only because it writes a real directory tree to a real temporary `HOME`; that is fine in a disposable runner and wrong in a ~3-second pre-commit hook.
+
+**`.github/scripts/check-changelog.sh` guards the artifact most likely to rot, and it rots invisibly.** A changelog is written by whoever is finishing something and read by whoever arrives later, with nothing between the two — and a stale changelog looks exactly like a current one. Nothing about an entry that was skipped, an id that was reused, or an `EXTENSION_VERSION` that stopped matching the version the newest entry claims for it produces a symptom anyone would notice. **A rule that nothing asserts drifts**, and this one would drift more quietly than any other in this document. So the check parses the file the file itself documents: every entry carries all four fields, the datetime is ISO 8601 with an offset, ids are unique, contiguous and below the declared `Next id:`, and every extension in `git ls-files '*/index.ts'` has a `version.ts` that is semver and equals the version the newest entry naming it records. The extension list is derived from the tree exactly as `check-runtime-hygiene.sh` derives it, so a fifth extension is caught the day it is added rather than the day someone remembers to list it.
+
+**What the check deliberately does not decide is whether the change deserved an entry, or whether the right segment moved.** That is `D7`, a SHOULD for the usual reason. Two mechanisms that would have made more of it a MUST were considered and rejected. *An extension's files changed, therefore its version must have changed* is wrong on its face here: §17 keeps conformance work behaviour-free, so a pass that relocates every module in an extension without changing what it does is **correct** to leave the version alone, and a check enforcing otherwise would train agents to bump meaninglessly to clear a gate. And *compare the tree against a previous revision* would assert two different things in the two layers — in the hook `HEAD` is the parent commit, in CI on a pull request `HEAD` is a merge commit whose tree is already the result — which is precisely the drift the call-site design in this section exists to remove. The check therefore reads only the working tree, which is also what keeps it inside the hook's budget.
+
+**It runs in both layers, which makes it the first script in `.github/scripts/` that is not CI-only** — the directory name no longer implies the distinction, and that is worth knowing before assuming the next script belongs there by default. The other two earn CI alone: one writes a real directory tree to a real temporary `HOME`, and the other compares two files a local commit cannot desynchronise by itself. This one reads a handful of small text files, adds no measurable time to the ~3 seconds above, and guards the step an agent is most likely to skip — which is the argument for it firing before the commit rather than after the push.
+
+**Because it runs in both, it must be invoked the same way in both: `npm run changelog`.** Invoking it as `bash .github/scripts/check-changelog.sh` in the workflow — the shape the two CI-only checks use — would fail `check-hook-parity.sh`, because the hook would then declare a script the workflow does not. That failure would be the parity check doing its job, not a defect in it: the whole design is that neither the hook nor the workflow defines a command, and a raw `bash` invocation in one of them is a command definition. The rule generalises: **a check that belongs to both layers is an npm script; a check that belongs to CI alone is a `bash` step.**
 
 **One thing this section does not cover.** A SonarCloud GitHub App is already attached to this repository and posts a `SonarCloud Code Analysis` check on pushed commits. It is configured app-side — nothing in the tree references it — and it predates this workflow, so "enforcement is the local pre-commit hook" was never quite the whole picture. It is not part of the gate described here: the `checks` job is what this document defines, and no rule in it is asserted by SonarCloud.
 
@@ -562,6 +626,20 @@ The second half of that claim originally read "extension load by `pi --list-mode
 
 **Three CI steps rather than CI invoking the hook.** Calling `.githooks/pre-commit` from the workflow would guarantee parity in one line, but `set -euo pipefail` means the first failure hides the other two, and a remote run that reports one problem per push is expensive. Separate steps, each guarded with `!cancelled()`, report all three. Parity is recovered by making both files pure call sites and asserting it (§14).
 
+**Per-extension versions and a changelog, narrowing the §17 non-goal.** "No release, publish, or deploy pipeline" rested on three claims — no build artifact, no version, one consumer — and the middle one was a conclusion smuggled in as a premise. The first and third are still true and nothing here changes them. The second was never an observation about this repository; it was the assumption that a version is a *release* concern, and §6 already contradicts it: the tool schema and prompt text are an extension's real public API, `A11` requires the schema descriptions, `promptSnippet`, `promptGuidelines`, and both READMEs to move in the same commit when that API changes, and §17 forbids compatibility layers *because* a change lands wholesale. That is a breaking-change protocol with nowhere to record that a break happened.
+
+The deciding argument is the second one: **the one consumer is not a person, and neither is the maintainer.** The caller is a model reading a schema with no memory of the previous session, and the next contributor is an agent reading a tree with no memory of why it is shaped this way. `git log` is the only record today and it is the wrong shape for both. It is ordered by when a commit landed rather than by what changed; one coherent change is many commits — bringing `advisor` to conformance took 25 of this repository's first 68; and a commit message cannot be corrected once it is written. **This repository has corrected its own record three times — `e86059f`, `022ff10`, `6bc08c7` — and not one correction went near the commit that made the original claim.** Every one landed in this standard, because the standard was the only artifact here that can be edited after the fact. A changelog is the second such artifact, for the class of fact the standard does not hold: not what the rule is, but what changed and when.
+
+**What was adopted is exactly two things: a semver constant per extension and one root `CHANGELOG.md` (`D6`, `D7`).** What was not adopted, listed because a version number is the thin end of a wedge and someone will read it as one: no build artifact, no package to publish, no registry, no git tags, no GitHub release, no deploy step, no per-extension `package.json` (`C1` is unchanged), and nothing anywhere that pins to these numbers. Git tags were considered on their own merits and rejected: a tag is a handle for someone fetching a specific revision, and there is no such person — the version lives *in the tree* so it travels with `rsync`, which is the only delivery mechanism this repository has, and `git show <rev>:advisor/version.ts` answers the question at any revision without a second namespace that nothing checks.
+
+**And the version is not a support promise.** §17's "No compatibility layers" is untouched and must stay that way: there is exactly one live version of every extension — whatever `sync-extensions.sh` last wrote — and a MAJOR bump is notice that something the model relied on has moved, not an offer to keep the previous shape working. That is the single most likely misreading of this decision, which is why §17 states it too rather than leaving it to be inferred from here.
+
+Three narrower alternatives, rejected:
+
+- **A single repository-wide version.** It would move on every change to any extension and so would say nothing about any of them. The value of the number is precisely that `advisor` at MAJOR 2 while `context-footer` sits at MAJOR 1 tells you which contract has been churning. The root `package.json` stays `private` and unversioned (`C1`).
+- **A versions table in `README.md`.** A second place to write a fact `version.ts` already holds, and one nothing would check — the failure mode §14 names. `README.md` links the changelog instead (`D5`).
+- **Deriving the next id by scanning for the maximum.** It reads a file that only grows to learn one integer, and it gives two agents working in parallel the same answer. The counter is explicit and is incremented by the edit that consumes it (`D6`).
+
 Rejected, with reasons:
 
 - **Path filters on the triggers.** They make a required status check unsatisfiable on a docs-only pull request, which blocks the merge until someone manually overrides — an absurd trade for three seconds of checks.
@@ -571,7 +649,7 @@ Rejected, with reasons:
 - **A dependency-update bot.** See §17 — C2 pins to the installed runtime.
 - **`biome ci` instead of `biome check`.** It would differ from what the hook runs, reintroducing by hand the drift the call-site design removes.
 - **A status badge.** Not because it would not render — the repository is public, so it would. There is simply no audience: one maintainer, no external contributors, and `README.md` is read by agents working in the clone rather than by anyone deciding whether to trust the build. A badge is a signal to strangers.
-- **Anything that builds, versions, publishes, or deploys.** See §17.
+- **Anything that builds, publishes, or deploys.** See §17. Versioning was carved out of this bullet by the decision recorded above and is no longer part of it; the rest stands unchanged, and CI still checks the tree and stops there.
 
 ---
 
@@ -579,13 +657,13 @@ Rejected, with reasons:
 
 Deliberately absent. Do not add these without a decision.
 
-**One entry here has been reversed by a recorded decision.** "No CI" was a non-goal and is no longer: CI was added, and the reasoning is in §16 and §14. That is what "do not add these without a decision" asks for — the entry is replaced rather than quietly deleted, so the reversal is visible to whoever reads this list next.
+**Two entries here have been changed by a recorded decision.** "No CI" was a non-goal and is no longer: CI was added, and the reasoning is in §16 and §14. "No release, publish, or deploy pipeline" has lost its versioning clause and kept everything else: per-extension semver and a root `CHANGELOG.md` were adopted (`D6`, `D7`), and the reasoning is in §16 and §12. That is what "do not add these without a decision" asks for — in both cases the entry is rewritten in place rather than quietly deleted, so the change is visible to whoever reads this list next, and so the narrowed entry states its new boundary rather than leaving it to be guessed.
 
 - **No coverage percentage target.** T3 covers core decision logic and explicitly not the shell. A global percentage would push toward testing the wiring, which is where the T4 harness already does the useful work.
-- **No release, publish, or deploy pipeline.** These extensions have no build artifact, no version, and one consumer; they are delivered by `rsync`. CI checks the tree and stops there.
+- **No release, publish, or deploy pipeline.** Extensions now carry a version and a changelog (`D6`, `D7`) and nothing else from the release toolkit: no build artifact, no package to publish, no registry, no git tags, no GitHub release, no deploy step, and nothing anywhere that pins to a version. They are delivered by `rsync` to one consumer; CI checks the tree and stops there. **`EXTENSION_VERSION` is a claim about what changed, not an artifact anyone can install** — see §16 for why the line falls exactly there.
 - **No CI matrix.** One OS and one Node major. Node 24's semantics *are* the test strategy here — R2's erasable syntax and R3's explicit extensions exist because of what Node 24 does and does not do (§15) — so a matrix would test configurations the rules are not written for. `ubuntu-latest` only, pinned by `engines.node` at `^24`.
 - **No dependency-update bot.** C2 requires every `@earendil-works/*` package to move with the *installed* pi runtime, and upgrading pi is a defined procedure (C2, N1), not a version bump. A bot's pull requests would always be closed unmerged.
-- **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs).
+- **No compatibility layers.** Extensions are synced wholesale and reloaded; there are no old versions to support. `prepareArguments` exists for resumed-session argument drift and is the only exception (see pi's docs). **`EXTENSION_VERSION` (`D6`) does not weaken this, and must not be read as weakening it.** There is exactly one live version of every extension — whatever `sync-extensions.sh` last wrote — so a MAJOR bump is notice that the contract moved, not a statement that the previous contract is still served. Nothing here branches on a version, and nothing may start.
 - **No behaviour changes as part of conformance work.** Conformance work moves, renames, and reformats. If a conformance step wants to change what an extension does, that is a separate commit.
 
 ---
@@ -603,6 +681,10 @@ Deliberately absent. Do not add these without a decision.
 
 - [pi-mono `AGENTS.md`](https://github.com/earendil-works/pi-mono/blob/main/AGENTS.md) — erasable syntax only, no `any`, top-level imports only, exact dependency pins, run tests you touch (R2, R4, R6, C2)
 - [pi-mono `biome.json`](https://github.com/earendil-works/pi-mono/blob/main/biome.json) — tabs, indent width 3, line width 120 (C4)
+
+**Versioning**
+
+- [Semantic Versioning 2.0.0](https://semver.org/) — the `MAJOR.MINOR.PATCH` grammar `D6` requires. Only the grammar is adopted: semver's contract is about what a *consumer* may depend on, and §17 keeps this repository from having one. What MAJOR, MINOR, and PATCH mean here is defined by `D7` against this repository's own §6 notion of a public API, not by the specification.
 
 **Agent-facing tool design**
 
