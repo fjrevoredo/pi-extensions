@@ -42,9 +42,12 @@ jobs:
           node-version-file: package.json
           cache: npm
 
+      # --ignore-scripts: nothing in the tree needs a lifecycle script to install, so running
+      # them buys nothing and hands arbitrary code execution to any dependency in the
+      # transitive tree. Verified: biome and tsc both resolve and run after an install with it.
       - name: Install
         id: install
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # Each check is guarded rather than short-circuited so one run reports all
       # three failures instead of only the first. `!cancelled()` rather than
