@@ -73,6 +73,13 @@ interface AdvisorDeps {
 	agentDirectory: () => string;
 }
 
+/**
+ * Hoisted out of the parameter list rather than written inline as a default. An object literal
+ * default is rebuilt on every call, which reads as though each load could get different wiring
+ * when it cannot — the field is a function reference that never varies.
+ */
+const DEFAULT_DEPS: AdvisorDeps = { agentDirectory: getAgentDir };
+
 function fail(
 	failure: AdvisorFailure,
 	state: SessionState,
@@ -105,7 +112,7 @@ async function gitSnapshot(pi: ExtensionAPI, cwd: string, signal?: AbortSignal):
 	return `status:\n${await run("status --porcelain")}\ndiff stat:\n${await run("diff --stat")}`;
 }
 
-export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = { agentDirectory: getAgentDir }) {
+export default function advisor(pi: ExtensionAPI, deps: AdvisorDeps = DEFAULT_DEPS) {
 	const state: SessionState = { attempted: 0, run: 0 };
 	const restore = (ctx: ExtensionContext) => {
 		state.attempted = 0;

@@ -54,16 +54,27 @@ const DEFAULT_MAX_VISIBLE_ROWS = 8;
 const DEFAULT_DESCRIPTION_GAP = 2;
 const DEFAULT_MIN_DESCRIPTION_WIDTH = 10;
 
+// Combining diacritical marks, the zero-width space, and variation selectors occupy no
+// columns, so they must not be counted when measuring width.
+//
+// This is a range comparison rather than the character class it replaces. As a class,
+// `[\u0300-\u036f\u200b\ufe00-\ufe0f]` reads as one that could split a grapheme, which both
+// Biome and SonarCloud flag; the class was correct, because the caller iterates by code point
+// and so only ever tests a lone mark, but proving that took a four-line comment and a
+// suppression, and it still tripped the second analyser. A range test on a number needs
+// neither, and says the same thing to a reader.
+function isZeroWidth(codePoint: number): boolean {
+	if (codePoint >= 0x0300 && codePoint <= 0x036f) return true;
+	if (codePoint === 0x200b) return true;
+	return codePoint >= 0xfe00 && codePoint <= 0xfe0f;
+}
+
 const defaultMetrics: TextMetrics = {
 	visibleWidth(text) {
 		let width = 0;
 		for (const character of [...text]) {
 			const codePoint = character.codePointAt(0) ?? 0;
-			// The rule guards against a character class splitting a grapheme. This loop already
-			// iterates by code point, so `character` is a lone combining mark, ZWSP, or variation
-			// selector \u2014 exactly the zero-width code points this class must skip to measure width.
-			// biome-ignore lint/suspicious/noMisleadingCharacterClass: matching lone zero-width code points is the intent here
-			if (codePoint === 0 || codePoint < 32 || /[\u0300-\u036f\u200b\ufe00-\ufe0f]/u.test(character)) continue;
+			if (codePoint === 0 || codePoint < 32 || isZeroWidth(codePoint)) continue;
 			width += codePoint >= 0x1100 ? 2 : 1;
 		}
 		return width;
