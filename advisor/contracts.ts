@@ -24,7 +24,7 @@ import { type Static, Type } from "typebox";
  * version is what `validateConfig` refuses to migrate silently.
  */
 /** The advisor *config-file* schema version. The extension version is `EXTENSION_VERSION` in version.ts. */
-export const ADVISOR_VERSION = 1;
+export const ADVISOR_CONFIG_VERSION = 1;
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
@@ -48,7 +48,7 @@ export const DEFAULT_LIMITS = {
 export type AdvisorLimits = { [Key in keyof typeof DEFAULT_LIMITS]: number };
 
 export interface AdvisorConfig {
-	version: typeof ADVISOR_VERSION;
+	version: typeof ADVISOR_CONFIG_VERSION;
 	enabled: boolean;
 	model?: string;
 	thinking: ThinkingLevel;
@@ -122,7 +122,7 @@ export interface AdvisorDetails {
 
 export function defaultConfig(): AdvisorConfig {
 	return {
-		version: ADVISOR_VERSION,
+		version: ADVISOR_CONFIG_VERSION,
 		enabled: false,
 		thinking: "high",
 		limits: { ...DEFAULT_LIMITS },

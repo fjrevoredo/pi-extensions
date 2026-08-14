@@ -8,7 +8,7 @@
  *
  * Nothing imports this and nothing is required to. It is a record, not a runtime input.
  *
- * **Not `ADVISOR_VERSION` in contracts.ts.** That is a different number for a different thing: the
+ * **Not `ADVISOR_CONFIG_VERSION` in contracts.ts.** That is a different number for a different thing: the
  * advisor's *config-file* schema version, which `validateConfig` compares against the `version` field
  * of `advisor.json` and refuses to migrate silently. Bumping that one invalidates the stored
  * configuration of every user, and the advisor drops to unconfigured with nothing pointing at the

@@ -1,6 +1,12 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, sep } from "node:path";
-import { ADVISOR_VERSION, type AdvisorConfig, DEFAULT_LIMITS, defaultConfig, THINKING_LEVELS } from "./contracts.ts";
+import {
+	ADVISOR_CONFIG_VERSION,
+	type AdvisorConfig,
+	DEFAULT_LIMITS,
+	defaultConfig,
+	THINKING_LEVELS,
+} from "./contracts.ts";
 import { MODEL_REFERENCE_PATTERN } from "./model-reference.ts";
 
 /**
@@ -43,7 +49,7 @@ export function validateConfig(value: unknown): AdvisorConfig | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 	if (!hasOnlyKeys(value, ["version", "enabled", "model", "thinking", "limits", "security"])) return undefined;
 	const input = value as Partial<AdvisorConfig>;
-	if (input.version !== ADVISOR_VERSION || typeof input.enabled !== "boolean") return undefined;
+	if (input.version !== ADVISOR_CONFIG_VERSION || typeof input.enabled !== "boolean") return undefined;
 	if (input.model !== undefined && (typeof input.model !== "string" || !MODEL_REFERENCE_PATTERN.test(input.model)))
 		return undefined;
 	if (!THINKING_LEVELS.includes(input.thinking as AdvisorConfig["thinking"])) return undefined;
@@ -88,7 +94,7 @@ export function validateConfig(value: unknown): AdvisorConfig | undefined {
 	)
 		return undefined;
 	return {
-		version: ADVISOR_VERSION,
+		version: ADVISOR_CONFIG_VERSION,
 		enabled: input.enabled,
 		...(input.model ? { model: input.model } : {}),
 		thinking: input.thinking as AdvisorConfig["thinking"],
