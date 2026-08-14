@@ -23,6 +23,7 @@ import { type Static, Type } from "typebox";
  * the driver renders and what the session journal stores, and the configuration
  * version is what `validateConfig` refuses to migrate silently.
  */
+/** The advisor *config-file* schema version. The extension version is `EXTENSION_VERSION` in version.ts. */
 export const ADVISOR_VERSION = 1;
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
