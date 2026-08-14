@@ -317,6 +317,7 @@ The repository is a **single root workspace**. Every dependency here is dev-only
   "scripts": {
     "test": "node --test",
     "typecheck": "tsc --build",
+    "changelog": "bash .github/scripts/check-changelog.sh",
     "format": "biome format --write .",
     "lint": "biome check ."
   }

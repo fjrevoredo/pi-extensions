@@ -61,7 +61,11 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run lint
 
-      # These two need no node_modules, so they are not gated on the install.
+      # These three need no node_modules, so they are not gated on the install.
+      - name: Changelog and versions
+        if: ${{ !cancelled() }}
+        run: npm run changelog
+
       - name: Runtime hygiene (L7)
         if: ${{ !cancelled() }}
         run: bash .github/scripts/check-runtime-hygiene.sh

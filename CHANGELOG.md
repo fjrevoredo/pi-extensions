@@ -70,9 +70,29 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0017
+Next id: 0018
 
 ---
+
+## 0017 — Give every extension a version, and this repository a changelog
+
+Date: 2026-08-14T09:19:25+02:00
+Scope: repo
+
+Until now the only record of what an extension had become was `git log`, which is a list of commits
+rather than a list of changes, and nothing anywhere named the state an extension was in. Each
+extension now carries `<ext>/version.ts`, and this file carries the changes those versions moved
+through — sixteen entries reconstructed from the first 68 commits, then this one.
+
+`.github/scripts/check-changelog.sh` asserts the schema above, the id counter, and the agreement
+between each `version.ts` and the newest entry naming it. It runs as `npm run changelog` from the
+pre-commit hook and from CI both, so `check-hook-parity.sh` keeps the two in step (§14). It
+deliberately does not check that a commit added an entry: entries group many commits, so enforced from
+a hook that rule would buy a junk entry per commit rather than a record anybody reads.
+
+§17's "no release, publish, or deploy pipeline" was narrowed rather than dropped — no build artifact,
+no publish, no registry, no tags, no deploy, and no compatibility layers. §16 holds the reasoning. A
+version exists so a change can be named and found again; nothing depends on it, and nothing may start.
 
 ## 0016 — Surface the advisor's risks and confidence to the driver
 
