@@ -113,14 +113,38 @@ const SENSITIVE_REDIRECT_PREFIX_PATTERN = String.raw`(?:\/etc\/|\/usr\/|\/bin\/|
  * one's own directory under it. That rule is `isWithinRoot`'s `requireSegmentBelow`.
  */
 export const EPHEMERAL_TARGET_ROOTS = [
+	// Every entry carries NOSONAR for `typescript:S5443`, "publicly writable directories are used
+	// safely here". The rule is right about the directories and wrong about this code, and both
+	// halves of that are worth stating, because the next reader will meet the same finding.
+	//
+	// Wrong about the code: S5443 exists to catch a program that *writes* into a world-writable
+	// directory, where an attacker can pre-create or symlink the path between the check and the open.
+	// This module opens nothing. It performs no filesystem access at all — that is asserted by
+	// `command-targets.ts` importing nothing and by every test running with no temporary directory
+	// (S1, T7). These strings are a policy catalogue: they name directories whose *contents* this
+	// gate declines to prompt about.
+	//
+	// Right about the directories, in one narrow way, which is already recorded above and in
+	// `README.md`: because there is no symlink resolution, `rm -rf /tmp/link-to-repo` is exempted.
+	// Removing an argument that is itself a symlink removes the link and not its target, so the
+	// exposure is `rm -rf /tmp/link/` and `rm -rf /tmp/link/*` — a local attacker who can already
+	// write to `/tmp` persuading the user's own agent to delete through a link. That is accepted
+	// deliberately: this is a guardrail, not a security boundary (P1), and resolving symlinks here
+	// would mean touching the filesystem from the one module that must not.
+	//
+	// Suppressed in code rather than dismissed in the SonarCloud UI so the reasoning lives next to
+	// the catalogue and survives a re-analysis, a project re-import, and a reader who never opens
+	// the dashboard.
+	//
 	// `/tmp` is a symlink to `/private/tmp` on macOS, and both spellings appear in real commands.
-	"/tmp/",
-	"/private/tmp/",
-	"/var/tmp/",
-	"/private/var/tmp/",
-	// The macOS per-user `$TMPDIR`, expanded.
-	"/var/folders/",
-	"/private/var/folders/",
+	"/tmp/", // NOSONAR
+	"/private/tmp/", // NOSONAR
+	"/var/tmp/", // NOSONAR
+	"/private/var/tmp/", // NOSONAR
+	// The macOS per-user `$TMPDIR`, expanded. Not currently flagged, but carrying the same marker so
+	// a widened rule list does not reopen a decision already taken.
+	"/var/folders/", // NOSONAR
+	"/private/var/folders/", // NOSONAR
 ] as const;
 
 /**
