@@ -37,12 +37,20 @@ you put there.
 ```bash
 npm install
 git config core.hooksPath .githooks
+git config user.email fjrevoredo@gmail.com
+git config user.name "Francisco J. Revoredo"
 ```
 
 The second enables the pre-commit hook (§14). `core.hooksPath` is per-clone local config that
 cannot be committed — which is why this command needs documenting, and also why the hook is
 *not* the gate. **If you are working in a fresh clone or a new worktree and have not run it,
 you have no hook.** The hook is a ~3-second local convenience; CI is what always runs.
+
+The last two are the same kind of per-clone config, for the same reason: this repository is
+personal, the global `~/.gitconfig` resolves to a work identity, and nothing in the tree forces
+the right one — so a commit from a fresh clone silently carries the wrong author. Check what
+`git commit` will actually record with **`git var GIT_AUTHOR_IDENT`**, not `git config
+user.email`, which does not account for everything that can override it.
 
 ## Working in this repo
 
