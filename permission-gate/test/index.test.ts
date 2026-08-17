@@ -25,8 +25,9 @@ interface SteerMessage {
 function createHarness(options: { hasUI?: boolean } = {}) {
 	const handlers = new Map<string, (event: any, ctx?: any) => unknown>();
 	const steered: SteerMessage[] = [];
-	const queuedChoices: string[] = [];
+	const queuedChoices: (string | ((choices: string[]) => string))[] = [];
 	let selectCalls = 0;
+	let lastChoices: string[] = [];
 
 	const pi = {
 		on(event: string, handler: (event: any, ctx?: any) => unknown) {
@@ -42,11 +43,14 @@ function createHarness(options: { hasUI?: boolean } = {}) {
 	const ctx = {
 		hasUI: options.hasUI ?? true,
 		ui: {
-			async select(_prompt: string, _choices: string[]) {
+			async select(_prompt: string, choices: string[]) {
 				selectCalls++;
+				lastChoices = choices;
 				const choice = queuedChoices.shift();
 				assert.ok(choice, "ui.select was called with no queued choice");
-				return choice;
+				// The session-root option's label carries the directory it grants, so a test cannot
+				// name it as a constant. Queue a picker instead and let it find the option.
+				return typeof choice === "function" ? choice(choices) : choice;
 			},
 		},
 	};
@@ -56,7 +60,10 @@ function createHarness(options: { hasUI?: boolean } = {}) {
 		get selectCalls() {
 			return selectCalls;
 		},
-		queue(...choices: string[]) {
+		get lastChoices() {
+			return lastChoices;
+		},
+		queue(...choices: (string | ((choices: string[]) => string))[]) {
 			queuedChoices.push(...choices);
 		},
 		setHasUI(value: boolean) {
@@ -182,4 +189,105 @@ test("clears cached approvals on session shutdown", async () => {
 
 	await harness.call("rm -rf dist");
 	assert.equal(harness.selectCalls, 2, "approvals must not outlive the session");
+});
+
+// The point of the whole change: the four measured false positives reach the gate and produce no
+// prompt at all, without any approval having been cached.
+test("a removal confined to a throwaway directory is allowed without a prompt", async () => {
+	const harness = createHarness();
+
+	assert.equal(await harness.call("rm -rf /tmp/scratch && mkdir -p /tmp/scratch"), undefined);
+	assert.equal(await harness.call("set -e\nrm -rf /tmp/venv\npython3 -m venv /tmp/venv"), undefined);
+	assert.equal(harness.selectCalls, 0);
+});
+
+test("the exemption skips one rule rather than allowing the command", async () => {
+	const harness = createHarness();
+	harness.queue(BLOCK);
+
+	const result: any = await harness.call("sudo rm -rf /tmp/scratch");
+
+	assert.equal(result.block, true);
+	// The removal rule stepped aside; the privilege rule is what the user is asked about.
+	assert.match(result.reason, /privilege-sudo/);
+});
+
+test("still prompts for a removal outside a throwaway directory", async () => {
+	const harness = createHarness();
+	harness.queue(BLOCK);
+
+	const result: any = await harness.call("rm -rf /tmp/scratch && rm -rf ~/Documents");
+
+	assert.equal(result.block, true);
+	assert.match(result.reason, /filesystem-rm-recursive/);
+});
+
+function pickOption(match: RegExp) {
+	return (choices: string[]) => {
+		const choice = choices.find((option) => match.test(option));
+		assert.ok(choice, `no option matched ${match} in ${JSON.stringify(choices)}`);
+		return choice;
+	};
+}
+
+test("offers the session-root option only when a grant would cover the command", async () => {
+	const harness = createHarness();
+	harness.queue(ALLOW_ONCE, ALLOW_ONCE);
+
+	await harness.call("rm -rf /Users/me/scratch/build");
+	assert.deepEqual(harness.lastChoices, [
+		ALLOW_ONCE,
+		ALLOW_FOR_SESSION,
+		"Allow this rule under /Users/me/scratch/build for this session",
+		EXPLAIN,
+		BLOCK,
+	]);
+
+	// A relative operand grants against a cwd the gate cannot see, so the four original options
+	// are shown unchanged rather than a fifth that would grant nothing.
+	await harness.call("rm -rf dist");
+	assert.deepEqual(harness.lastChoices, [ALLOW_ONCE, ALLOW_FOR_SESSION, EXPLAIN, BLOCK]);
+});
+
+test("a granted root silences paths below it and nothing beside it", async () => {
+	const harness = createHarness();
+	harness.queue(pickOption(/^Allow this rule under /), BLOCK);
+
+	assert.equal(await harness.call("rm -rf /Users/me/scratch/build"), undefined);
+	assert.equal(harness.selectCalls, 1);
+
+	// Below the granted root: no prompt, and no approval was cached for this command either.
+	assert.equal(await harness.call("rm -rf /Users/me/scratch/build/sub"), undefined);
+	assert.equal(harness.selectCalls, 1);
+
+	// A sibling is a different directory and is still gated.
+	const result: any = await harness.call("rm -rf /Users/me/scratch/other");
+	assert.equal(harness.selectCalls, 2);
+	assert.equal(result.block, true);
+});
+
+test("a granted root does not carry to another rule", async () => {
+	const harness = createHarness();
+	harness.queue(pickOption(/^Allow this rule under /), BLOCK);
+
+	await harness.call("rm -rf /Users/me/scratch/build");
+
+	// Same directory, different rule: the grant is bound to the rule it was given for (P5).
+	const result: any = await harness.call("rmdir /Users/me/scratch/build");
+	assert.equal(result.block, true);
+	assert.match(result.reason, /filesystem-rmdir/);
+});
+
+test("clears granted roots on session shutdown", async () => {
+	const harness = createHarness();
+	harness.queue(pickOption(/^Allow this rule under /), BLOCK);
+
+	await harness.call("rm -rf /Users/me/scratch/build");
+	assert.equal(harness.selectCalls, 1);
+
+	await harness.shutdown();
+
+	const result: any = await harness.call("rm -rf /Users/me/scratch/build");
+	assert.equal(harness.selectCalls, 2, "granted roots must not outlive the session");
+	assert.equal(result.block, true);
 });

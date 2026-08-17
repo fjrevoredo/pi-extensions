@@ -14,12 +14,18 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { evaluateDangerousCommand, formatCommandPreview, formatRuleSummary } from "./core.ts";
+import { createSessionRootKey, evaluateDangerousCommand, formatCommandPreview, formatRuleSummary } from "./core.ts";
 
 const ALLOW_ONCE_OPTION = "Allow once";
 const ALLOW_FOR_SESSION_OPTION = "Allow for this session";
 const EXPLAIN_COMMAND_OPTION = "Explain this command";
 const BLOCK_OPTION = "Block";
+
+// The fifth option's label carries the directory it would grant, because that directory is the whole
+// content of the decision. It is built rather than constant for that reason.
+function formatAllowForTargetOption(target: string) {
+	return `Allow this rule under ${target} for this session`;
+}
 
 // Prompt-title helpers intentionally stay local to the entrypoint because they are
 // pure presentation concerns for the interactive TUI prompt, not policy concerns.
@@ -75,8 +81,15 @@ export default function permissionGate(pi: ExtensionAPI) {
 	// - a different rule for the same-looking command still prompts again
 	const sessionApprovals = new Set<string>();
 
+	// Session-granted roots, kept separately from `sessionApprovals` because they answer a different
+	// question: not "was this exact command approved" but "is this rule exempt under this directory".
+	// A grant is keyed to the matched rule and to one directory, so it never widens into a
+	// category-level bypass (P5), and it is cleared on shutdown alongside the approvals.
+	const sessionRootGrants = new Set<string>();
+
 	pi.on("session_shutdown", async () => {
 		sessionApprovals.clear();
+		sessionRootGrants.clear();
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
@@ -84,7 +97,7 @@ export default function permissionGate(pi: ExtensionAPI) {
 			return undefined;
 		}
 
-		const evaluation = evaluateDangerousCommand(event.input.command);
+		const evaluation = evaluateDangerousCommand(event.input.command, sessionRootGrants);
 		if (!evaluation.matchedRule || !evaluation.sessionApprovalKey) {
 			return undefined;
 		}
@@ -104,11 +117,26 @@ export default function permissionGate(pi: ExtensionAPI) {
 		// Interactive behaviour is intentionally explicit:
 		// - Allow once: let only this tool call through
 		// - Allow for this session: cache approval for the same normalized command + rule id
+		// - Allow this rule under <dir>: exempt this rule for that directory and anything below it
 		// - Explain this command: deny execution, ask the agent to explain and retry
 		// - Block: deny execution and return a searchable reason containing the matched rule id
+		//
+		// The fourth is offered only when `core.ts` found a directory a grant would actually cover.
+		// The other four are shown unchanged otherwise, because an option that grants nothing is
+		// worse than an absent one.
+		const allowForTargetOption = evaluation.grantableTarget
+			? formatAllowForTargetOption(evaluation.grantableTarget)
+			: undefined;
+
 		const choice = await ctx.ui.select(
 			`${rulePromptTitle}\n\n${rulePromptMeta}\n\n$ ${formatCommandPreview(evaluation.normalizedCommand)}\n\nChoose an action:`,
-			[ALLOW_ONCE_OPTION, ALLOW_FOR_SESSION_OPTION, EXPLAIN_COMMAND_OPTION, BLOCK_OPTION],
+			[
+				ALLOW_ONCE_OPTION,
+				ALLOW_FOR_SESSION_OPTION,
+				...(allowForTargetOption ? [allowForTargetOption] : []),
+				EXPLAIN_COMMAND_OPTION,
+				BLOCK_OPTION,
+			],
 		);
 
 		if (choice === ALLOW_ONCE_OPTION) {
@@ -117,6 +145,11 @@ export default function permissionGate(pi: ExtensionAPI) {
 
 		if (choice === ALLOW_FOR_SESSION_OPTION) {
 			sessionApprovals.add(evaluation.sessionApprovalKey);
+			return undefined;
+		}
+
+		if (allowForTargetOption && choice === allowForTargetOption && evaluation.grantableTarget) {
+			sessionRootGrants.add(createSessionRootKey(evaluation.matchedRule, evaluation.grantableTarget));
 			return undefined;
 		}
 
