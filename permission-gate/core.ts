@@ -41,6 +41,23 @@ export interface PermissionGateEvaluation {
 	sessionApprovalKey: string | undefined;
 }
 
+// `\b` treats `-` as a word boundary, so `\brm\b` matches the `--rm` in `docker run --rm`,
+// `\bkill\b` matches `--kill-after`, and `\bhalt\b` matches `--halt-on-error`. Every one of
+// those is a flag, not the dangerous action. This prefix rejects a preceding `-` as well as a
+// preceding word character.
+//
+// The class rejects `-` and word characters only, never `/` and never `\`: `/bin/rm -rf /` and
+// `\rm -rf /` are the same removal by another spelling and have to keep matching.
+const COMMAND_WORD_START = String.raw`(?<![-\w])`;
+
+// The one shape COMMAND_WORD_START cannot express: a command whose *name* contains a hyphen.
+// `openrc-shutdown` and `k3s-killall.sh` are real commands and real true positives, and a
+// lookbehind for `-` alone cannot tell them from a flag. A hyphen that follows a word character
+// or a `.` is part of a command name; `--halt-on-error` has `--` before the word, so it stays
+// excluded. Use this only where a hyphenated command name actually exists.
+const HYPHENATED_COMMAND_WORD_START = String.raw`(?<=[\w.]-)`;
+const COMMAND_WORD_OR_HYPHENATED_START = `(?:${COMMAND_WORD_START}|${HYPHENATED_COMMAND_WORD_START})`;
+
 // Redirect policy is intentionally narrow. The previous gate matched nearly any
 // absolute-path redirect and produced too many false positives for benign temp files.
 // These prefixes are treated as sensitive enough to gate by default.
@@ -82,11 +99,26 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		// difference between linear and quadratic backtracking on a long non-matching flag, which
 		// would hang the gate on the one extension where hanging is a safety failure. Do not
 		// "simplify" this back to `[a-z]*`.
-		pattern: /\brm\b\s+(-[a-qs-z]*r[a-z]*|--recursive)\b/i,
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rm\b\s+(-[a-qs-z]*r[a-z]*|--recursive)\b`, "i"),
 	},
-	{ id: "filesystem-rm-wildcard", label: "Wildcard file removal", category: "filesystem", pattern: /\brm\b.*\*/i },
-	{ id: "filesystem-rmdir", label: "Directory removal", category: "filesystem", pattern: /\brmdir\b/i },
-	{ id: "filesystem-shred", label: "Secure file deletion", category: "filesystem", pattern: /\bshred\b/i },
+	{
+		id: "filesystem-rm-wildcard",
+		label: "Wildcard file removal",
+		category: "filesystem",
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rm\b.*\*`, "i"),
+	},
+	{
+		id: "filesystem-rmdir",
+		label: "Directory removal",
+		category: "filesystem",
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rmdir\b`, "i"),
+	},
+	{
+		id: "filesystem-shred",
+		label: "Secure file deletion",
+		category: "filesystem",
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}shred\b`, "i"),
+	},
 	{
 		id: "filesystem-sensitive-redirect",
 		label: "Shell overwrite of sensitive system path",
@@ -103,9 +135,23 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 	},
 
 	// Process management
-	{ id: "process-kill", label: "Kill process", category: "process", pattern: /\bkill\b/i },
+	{
+		id: "process-kill",
+		label: "Kill process",
+		category: "process",
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}kill\b`, "i"),
+	},
+	// `process-killall` deliberately keeps a plain `\b`. No `-killall` flag has produced a false
+	// positive here, and `k3s-killall.sh` — which really does tear down every workload on the box —
+	// is a hyphenated command name that `COMMAND_WORD_START` would stop matching. Narrowing a
+	// safety rule needs a measured false positive, not symmetry with its neighbours (P3).
 	{ id: "process-killall", label: "Kill all processes", category: "process", pattern: /\bkillall\b/i },
-	{ id: "process-pkill", label: "Pattern kill", category: "process", pattern: /\bpkill\b/i },
+	{
+		id: "process-pkill",
+		label: "Pattern kill",
+		category: "process",
+		pattern: new RegExp(String.raw`${COMMAND_WORD_START}pkill\b`, "i"),
+	},
 
 	// Package management - uninstall / remove
 	{
@@ -228,15 +274,26 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 	// Privilege escalation
 	// These privilege rules intentionally live after more specific destructive actions.
 	// Example: `sudo rm -r dist` should explain the file removal rule, not only `sudo`.
+	// `privilege-sudo` deliberately keeps a plain `\b`, unlike its neighbours. `ansible-playbook
+	// --sudo` genuinely escalates privilege, so a `-`-prefixed `sudo` is a true positive and
+	// COMMAND_WORD_START would disarm it. Do not "make this consistent" (P3).
 	{ id: "privilege-sudo", label: "sudo (privilege escalation)", category: "privilege", pattern: /\bsudo\b/i },
-	{ id: "privilege-su", label: "su (switch user)", category: "privilege", pattern: /\bsu(?:\s|$)/i },
+	// Two spellings, for the same reason `privilege-sudo` has none: the bare command word must not
+	// match the `-su` in `du -su` or `sort -su`, and Ansible's `--su` / `--su-user` become-method is
+	// the same true positive as its `--sudo`. `--su` needs both dashes, so `-su` matches neither branch.
+	{
+		id: "privilege-su",
+		label: "su (switch user)",
+		category: "privilege",
+		pattern: new RegExp(String.raw`(?:${COMMAND_WORD_START}su(?:\s|$)|--su(?:-user)?\b)`, "i"),
+	},
 
 	// System
 	{
 		id: "system-shutdown",
 		label: "System shutdown/reboot",
 		category: "system",
-		pattern: /\b(shutdown|reboot|halt|poweroff)\b/i,
+		pattern: new RegExp(String.raw`${COMMAND_WORD_OR_HYPHENATED_START}(shutdown|reboot|halt|poweroff)\b`, "i"),
 	},
 	// Policy choice: gate exact octal 777 here, but do not gate sticky-bit 1777 in this pass.
 	// If that policy changes later, update both this rule and the validation cases together.
