@@ -13,8 +13,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	COMMAND_PREVIEW_MAX_LENGTH,
 	createSessionApprovalKey,
+	createSessionRootKey,
 	evaluateDangerousCommand,
+	formatCommandPreview,
 	normalizeCommand,
 	PERMISSION_GATE_RULES,
 } from "../core.ts";
@@ -77,6 +80,24 @@ const CASES: readonly RuleCase[] = [
 	},
 	{ command: "rmdir old-dir", expectedRuleId: "filesystem-rmdir" },
 	{ command: "shred secrets.txt", expectedRuleId: "filesystem-shred" },
+
+	// ── The ephemeral-target exemption, end to end ────────────────────────────────────────────
+	// The four measured false positives from the session log, then the shapes that must stay gated.
+	{ command: "rm -rf /tmp/google-ads-api-contracts && mkdir -p /tmp/google-ads-api-contracts", expectedRuleId: null },
+	{ command: "set -e\nrm -rf /tmp/agent-python\npython3 -m venv /tmp/agent-python", expectedRuleId: null },
+	{ command: "rm -rf /tmp/custom-zips", expectedRuleId: null },
+	{ command: "rm -rf /tmp/scratch/*", expectedRuleId: null },
+	{ command: "rmdir /tmp/x/build", expectedRuleId: null },
+	{ command: "shred /tmp/x/secret", expectedRuleId: null },
+	{ command: "rm -rf /tmp", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "rm -rf /tmp/*", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "rm -rf /tmp/x && rm -rf ~/Documents", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "rm -rf /tmp/x && /bin/rm -rf /", expectedRuleId: "filesystem-rm-recursive" },
+	// The tripwire, and a rule that deliberately did not opt in — both stay gated on purpose.
+	{ command: "rm -rf --no-preserve-root /tmp/x", expectedRuleId: "filesystem-rm-recursive" },
+	{ command: "shred -n 3 /tmp/x", expectedRuleId: "filesystem-shred" },
+	// Exempt-then-continue: the removal rule steps aside and the next rule still prompts.
+	{ command: "sudo rm -rf /tmp/x", expectedRuleId: "privilege-sudo" },
 	{ command: "echo nope > /etc/hosts", expectedRuleId: "filesystem-sensitive-redirect" },
 	{ command: "echo ok > /tmp/out.txt", expectedRuleId: null },
 	{ command: "echo ok >> /var/tmp/out.txt", expectedRuleId: null },
@@ -137,7 +158,7 @@ const CASES: readonly RuleCase[] = [
 
 test("matches every command case to the expected rule, including the negatives", () => {
 	// Guards against a case silently disappearing from the table during a refactor.
-	assert.equal(CASES.length, 64);
+	assert.equal(CASES.length, 77);
 
 	for (const { command, expectedRuleId } of CASES) {
 		const actualRuleId = evaluateDangerousCommand(command).matchedRule?.id ?? null;
@@ -202,6 +223,22 @@ test("collapses whitespace before matching", () => {
 	assert.equal(normalizeCommand("  rm   -r    dist  "), "rm -r dist");
 });
 
+// A newline is a statement separator, and collapsing it to a space fuses one statement's command
+// with the next statement's arguments — which is exactly the shape of the third measured false
+// positive. It becomes `; ` rather than staying `\n` so one normalizer still feeds matching, keying
+// and display alike (P6).
+test("rewrites a newline into a statement separator rather than a space", () => {
+	assert.equal(normalizeCommand("set -e\nrm -rf /tmp/x"), "set -e; rm -rf /tmp/x");
+	assert.equal(normalizeCommand("a\n\n\nb"), "a; b");
+	assert.equal(normalizeCommand("a;\nb"), "a; b");
+	assert.equal(normalizeCommand(""), "");
+
+	// A line that ends mid-statement is joined with a space: the trailing operator is already the
+	// separator, and a trailing backslash continues the same statement.
+	assert.equal(normalizeCommand("rm -rf /tmp/x &&\nmkdir -p /tmp/x"), "rm -rf /tmp/x && mkdir -p /tmp/x");
+	assert.equal(normalizeCommand("rm -rf \\\n/tmp/x"), "rm -rf /tmp/x");
+});
+
 test("binds the approval key to both the matched rule and the normalized command", () => {
 	const evaluation = evaluateDangerousCommand("  rm   -r    dist  ");
 
@@ -211,4 +248,79 @@ test("binds the approval key to both the matched rule and the normalized command
 		"filesystem-rm-recursive::rm -r dist",
 	);
 	assert.equal(evaluation.sessionApprovalKey, "filesystem-rm-recursive::rm -r dist");
+});
+
+test("a session-granted root exempts the rule it was granted for, and only below itself", () => {
+	const rule = PERMISSION_GATE_RULES.find(({ id }) => id === "filesystem-rm-recursive");
+	assert.ok(rule);
+	const grants = new Set([createSessionRootKey(rule, "/Users/me/scratch/build")]);
+
+	assert.equal(evaluateDangerousCommand("rm -rf /Users/me/scratch/build", grants).matchedRule, undefined);
+	assert.equal(evaluateDangerousCommand("rm -rf /Users/me/scratch/build/sub", grants).matchedRule, undefined);
+	// A sibling of the granted root is not covered, and neither is its parent.
+	assert.equal(
+		evaluateDangerousCommand("rm -rf /Users/me/scratch/other", grants).matchedRule?.id,
+		"filesystem-rm-recursive",
+	);
+	assert.equal(
+		evaluateDangerousCommand("rm -rf /Users/me/scratch", grants).matchedRule?.id,
+		"filesystem-rm-recursive",
+	);
+	// Without the grant the same command is gated, so the grant is what did the work.
+	assert.equal(evaluateDangerousCommand("rm -rf /Users/me/scratch/build").matchedRule?.id, "filesystem-rm-recursive");
+});
+
+// A grant is bound to the matched rule, never to the command or the category, for the same reason
+// the approval key is (P5).
+test("a session-granted root does not carry to another rule", () => {
+	const removal = PERMISSION_GATE_RULES.find(({ id }) => id === "filesystem-rm-recursive");
+	assert.ok(removal);
+	const grants = new Set([createSessionRootKey(removal, "/Users/me/scratch/build")]);
+
+	assert.equal(evaluateDangerousCommand("rmdir /Users/me/scratch/build", grants).matchedRule?.id, "filesystem-rmdir");
+});
+
+test("offers a grantable target only when a grant would actually cover the command", () => {
+	const grantable = [
+		"rm -rf /Users/me/scratch/build",
+		"rm -rf /Users/me/scratch/build/",
+		"rm -rf /Users/me/scratch/build && rm -rf /Users/me/scratch/build",
+	];
+	for (const command of grantable) {
+		assert.equal(
+			evaluateDangerousCommand(command).grantableTarget,
+			"/Users/me/scratch/build",
+			`should be grantable: ${command}`,
+		);
+	}
+
+	const notGrantable = [
+		"rm -rf dist", // relative: it would grant against a cwd this module cannot see
+		"rm -rf /Users", // one segment: too broad to offer
+		"rm -rf /a/b /c/d", // two operands: a grant would cover half the command
+		"rm -rf /Users/me/scratch/*", // a wildcard is not a directory to grant
+		"rm -rf /Users/me/$DIR", // not a literal
+		"xargs rm -rf", // no operand at all
+		// A well-formed grant that would not silence the command: the removal rule steps aside and
+		// `privilege-sudo` prompts instead, so offering to grant the root would be a lie.
+		"sudo rm -rf /Users/me/x",
+	];
+	for (const command of notGrantable) {
+		assert.equal(evaluateDangerousCommand(command).grantableTarget, undefined, `should not be grantable: ${command}`);
+	}
+});
+
+// After the exemption, the normal shape of a gated removal is a long benign prefix with the
+// dangerous part at the end. A head-only preview would show the user the half they had no objection
+// to and hide the half they did.
+test("keeps both ends of a command too long to preview", () => {
+	const command = `rm -rf /tmp/${"x".repeat(200)} && rm -rf ~`;
+	const preview = formatCommandPreview(command);
+
+	assert.equal(preview.length, COMMAND_PREVIEW_MAX_LENGTH);
+	assert.ok(preview.startsWith("rm -rf /tmp/xxx"), preview);
+	assert.ok(preview.endsWith("&& rm -rf ~"), preview);
+	assert.ok(preview.includes("..."), preview);
+	// A command that fits is returned whole, with no marker.
+	assert.equal(formatCommandPreview("rm -rf dist"), "rm -rf dist");
 });

@@ -9,11 +9,21 @@
  * - compact formatting helpers used by the extension entrypoint
  *
  * Keep this module independent from pi so the policy contract can be tested with no
- * TUI and no pi runtime. It imports nothing.
+ * TUI and no pi runtime. It imports nothing but `command-targets.ts`, which is pure for
+ * the same reason and holds mechanism only — every question of *which* directory is
+ * throwaway is answered here, so policy still lives in one module (P3).
  *
  * Rule order is significant: evaluation is first-match-wins, so earlier rules take
  * precedence over later ones when a command matches multiple patterns.
  */
+
+import {
+	canonicalizeLiteralOperand,
+	findInvocationOperands,
+	hasOnlyExemptTargets,
+	isWithinRoot,
+	splitCommandStatements,
+} from "./command-targets.ts";
 
 export const COMMAND_PREVIEW_MAX_LENGTH = 120;
 
@@ -33,12 +43,29 @@ export interface PermissionGateRule {
 	label: string;
 	category: PermissionGateRuleCategory;
 	pattern: RegExp;
+	/**
+	 * Opt this rule into the ephemeral-target exemption, naming the command whose operands decide
+	 * it. A rule with a `targetScope` is **skipped** when every invocation of that command is
+	 * confined to a throwaway directory — and evaluation then *continues with the remaining rules*
+	 * rather than allowing the command. That is what keeps `sudo rm -rf /tmp/x` gated: the removal
+	 * rule steps aside and `privilege-sudo` matches instead.
+	 *
+	 * Only add this where the operands really are the whole risk. See the notes next to
+	 * `filesystem-truncate` and `filesystem-shred` for two rules that deliberately do not opt in.
+	 */
+	targetScope?: { commandName: string };
 }
 
 export interface PermissionGateEvaluation {
 	normalizedCommand: string;
 	matchedRule: PermissionGateRule | undefined;
 	sessionApprovalKey: string | undefined;
+	/**
+	 * The one directory a session-root grant would cover for this command, when the matched rule is
+	 * `targetScope`d and the command names exactly one operand that a grant could describe.
+	 * `undefined` means the fifth prompt option must not be offered, because it would grant nothing.
+	 */
+	grantableTarget: string | undefined;
 }
 
 // `\b` treats `-` as a word boundary, so `\brm\b` matches the `--rm` in `docker run --rm`,
@@ -62,6 +89,49 @@ const COMMAND_WORD_OR_HYPHENATED_START = `(?:${COMMAND_WORD_START}|${HYPHENATED_
 // absolute-path redirect and produced too many false positives for benign temp files.
 // These prefixes are treated as sensitive enough to gate by default.
 const SENSITIVE_REDIRECT_PREFIX_PATTERN = String.raw`(?:\/etc\/|\/usr\/|\/bin\/|\/sbin\/|\/var\/lib\/|\/System\/|\/Library\/)`;
+
+/**
+ * Directories whose contents are throwaway by convention, so removing something *under* one of
+ * them is not the act a destructive-removal rule exists to catch. Every recursive-removal prompt in
+ * the measured session was a scratchpad teardown under one of these.
+ *
+ * **Every entry is a literal absolute path, and that is a policy decision, not a simplification.**
+ * `$TMPDIR` and `${TMPDIR}` were catalogued in an earlier draft on the reasoning that whatever
+ * `TMPDIR` names is a temp directory by definition. It is not: `TMPDIR=/ rm -rf "$TMPDIR/etc"` sets
+ * the variable in the same command, so the "root" is chosen by the very string being judged. The
+ * expanded macOS value lands under `/var/folders`, which is catalogued, so nothing is lost.
+ *
+ * **Root matching is case-sensitive, so `rm -rf /TMP/x` prompts.** This is the deliberate *opposite*
+ * of `advisor`'s `P6` case-folding fix, and the reason is the direction of failure. There, folding
+ * case could only ever widen a denial. Here it would widen an *exemption*: `/TMP/x` and `/tmp/x` are
+ * the same directory on macOS and different directories on Linux, so folding case would exempt a
+ * genuinely different directory on one of the two platforms. An extra prompt on `/TMP/x` is wrong on
+ * neither. Do not "fix" this into a fail-open.
+ *
+ * A matching operand must also name something *below* the root — `rm -rf /tmp` and `rm -rf /tmp/*`
+ * stay gated, because wiping every other process's scratch state is a different act from removing
+ * one's own directory under it. That rule is `isWithinRoot`'s `requireSegmentBelow`.
+ */
+export const EPHEMERAL_TARGET_ROOTS = [
+	// `/tmp` is a symlink to `/private/tmp` on macOS, and both spellings appear in real commands.
+	"/tmp/",
+	"/private/tmp/",
+	"/var/tmp/",
+	"/private/var/tmp/",
+	// The macOS per-user `$TMPDIR`, expanded.
+	"/var/folders/",
+	"/private/var/folders/",
+] as const;
+
+/**
+ * `rm --no-preserve-root` exists for exactly one purpose, and a command that reaches for it has
+ * announced its intent. It is a free tripwire: no exemption applies to a command containing it,
+ * whatever its operands look like.
+ */
+const NO_PRESERVE_ROOT_PATTERN = /--no-preserve-root\b/i;
+
+/** Session-granted roots are keyed per rule, so one grant never widens into a category bypass (P5). */
+const SESSION_ROOT_KEY_INFIX = "::root::";
 
 // SQL-destructive matching is intentionally limited to explicit DB CLI execution
 // contexts. This avoids flagging example text such as `echo "DELETE FROM users"`.
@@ -100,24 +170,31 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 		// would hang the gate on the one extension where hanging is a safety failure. Do not
 		// "simplify" this back to `[a-z]*`.
 		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rm\b\s+(-[a-qs-z]*r[a-z]*|--recursive)\b`, "i"),
+		targetScope: { commandName: "rm" },
 	},
 	{
 		id: "filesystem-rm-wildcard",
 		label: "Wildcard file removal",
 		category: "filesystem",
 		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rm\b.*\*`, "i"),
+		targetScope: { commandName: "rm" },
 	},
 	{
 		id: "filesystem-rmdir",
 		label: "Directory removal",
 		category: "filesystem",
 		pattern: new RegExp(String.raw`${COMMAND_WORD_START}rmdir\b`, "i"),
+		targetScope: { commandName: "rmdir" },
 	},
+	// `shred -n 3 /tmp/x` is **not** exempted, and cannot be: the tokenizer models no flag arity, so
+	// the `3` reads as an operand, looks relative, and nothing is confined. That is measured, not
+	// assumed, and it fails safe. What the scope buys here is the plain `shred /tmp/x/secret` form.
 	{
 		id: "filesystem-shred",
 		label: "Secure file deletion",
 		category: "filesystem",
 		pattern: new RegExp(String.raw`${COMMAND_WORD_START}shred\b`, "i"),
+		targetScope: { commandName: "shred" },
 	},
 	{
 		id: "filesystem-sensitive-redirect",
@@ -127,6 +204,11 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 	},
 	// Keep this anchored to the invoked command name so SQL phrases like
 	// `TRUNCATE TABLE ...` inside DB client commands do not get misclassified as file truncation.
+	//
+	// Deliberately **no** `targetScope`. `-s SIZE` is a flag with a separate value, and the exemption
+	// models no flag arity, so `truncate -s 0 /tmp/f` reads `0` as an operand and can never be
+	// exempted while `truncate --size=0 /tmp/f` could. A rule that exempts one spelling and not the
+	// other is worse than one that exempts neither, and no false positive here was ever measured (P3).
 	{
 		id: "filesystem-truncate",
 		label: "File truncation",
@@ -332,21 +414,93 @@ export const PERMISSION_GATE_RULES: readonly PermissionGateRule[] = [
 // is genuinely not known to be a string. The gate must not throw on such a payload, so
 // the coercion below is load-bearing rather than defensive noise.
 export function normalizeCommand(command: unknown): string {
-	return String(command ?? "")
-		.replace(/\s+/g, " ")
-		.trim();
+	const lines = String(command ?? "")
+		.split(/\r?\n/)
+		.map((line) => line.replace(/\s+/g, " ").trim())
+		.filter(Boolean);
+
+	let normalized = "";
+	for (const line of lines) {
+		if (!normalized) {
+			normalized = line;
+		} else if (LINE_CONTINUES_STATEMENT.test(normalized)) {
+			normalized = `${normalized.replace(/\\$/, "").trimEnd()} ${line}`;
+		} else {
+			normalized = `${normalized.replace(/;+$/, "")}; ${line}`;
+		}
+	}
+
+	return normalized;
+}
+
+/**
+ * A newline is a statement separator, and collapsing it to a space is a policy hole rather than a
+ * formatting detail: it fuses `rm -rf /tmp/x` with whatever the next line's tokens are, so the next
+ * line's arguments read as `rm` operands. The whole exemption below depends on knowing where one
+ * statement ends, so the separator has to survive normalization.
+ *
+ * It is rewritten to `; ` rather than kept as `\n` so that **one** normalizer still feeds matching,
+ * keying and display alike (P6). Keeping the raw string for the decision and the collapsed one for
+ * the approval key would break "same key ⇒ same decision", which is what makes `P5`'s narrow key
+ * mean anything.
+ *
+ * A line that ends mid-statement is joined with a space instead: a trailing `&&`, `||`, `|` or `&`
+ * is already the separator, and a trailing `\` is a continuation of the same statement.
+ */
+const LINE_CONTINUES_STATEMENT = /(?:\\|&&|\|\||[|&])$/;
+
+function grantedRootsFor(rule: PermissionGateRule, sessionRootGrants: ReadonlySet<string>): string[] {
+	const prefix = `${rule.id}${SESSION_ROOT_KEY_INFIX}`;
+	return [...sessionRootGrants].filter((grant) => grant.startsWith(prefix)).map((grant) => grant.slice(prefix.length));
+}
+
+/**
+ * Whether this rule steps aside for this command: it is `targetScope`d, the command does not reach
+ * for `--no-preserve-root`, and every invocation of the scoped command is confined either to a
+ * catalogued throwaway root or to a root the user granted this session for *this* rule.
+ */
+function isTargetScopeExempt(
+	rule: PermissionGateRule,
+	normalizedCommand: string,
+	sessionRootGrants: ReadonlySet<string>,
+): boolean {
+	const { targetScope } = rule;
+	if (!targetScope) return false;
+	if (NO_PRESERVE_ROOT_PATTERN.test(normalizedCommand)) return false;
+
+	const grantedRoots = grantedRootsFor(rule, sessionRootGrants);
+
+	return hasOnlyExemptTargets(normalizedCommand, targetScope.commandName, (operand) => {
+		const canonical = canonicalizeLiteralOperand(operand);
+		if (canonical === undefined) return false;
+
+		return (
+			EPHEMERAL_TARGET_ROOTS.some((root) => isWithinRoot(canonical, root, true)) ||
+			grantedRoots.some((root) => isWithinRoot(canonical, root, false))
+		);
+	});
 }
 
 /**
  * Ordered evaluation helper. This preserves first-match-wins semantics so the first
  * rule in PERMISSION_GATE_RULES always supplies the user-facing explanation.
+ *
+ * `sessionRootGrants` defaults to empty, and that default is the strict one: with no grants every
+ * rule applies exactly as it did before the exemption existed, so a caller that forgets to thread
+ * them through gets more prompts rather than fewer.
  */
-export function findDangerousRule(normalizedCommand: string): PermissionGateRule | undefined {
+export function findDangerousRule(
+	normalizedCommand: string,
+	sessionRootGrants: ReadonlySet<string> = new Set(),
+): PermissionGateRule | undefined {
 	if (!normalizedCommand) {
 		return undefined;
 	}
 
-	return PERMISSION_GATE_RULES.find(({ pattern }) => pattern.test(normalizedCommand));
+	return PERMISSION_GATE_RULES.find(
+		(rule) =>
+			rule.pattern.test(normalizedCommand) && !isTargetScopeExempt(rule, normalizedCommand, sessionRootGrants),
+	);
 }
 
 export function createSessionApprovalKey(rule: PermissionGateRule, normalizedCommand: string): string {
@@ -355,24 +509,90 @@ export function createSessionApprovalKey(rule: PermissionGateRule, normalizedCom
 	return `${rule.id}::${normalizedCommand}`;
 }
 
-export function evaluateDangerousCommand(command: unknown): PermissionGateEvaluation {
+export function createSessionRootKey(rule: PermissionGateRule, root: string): string {
+	return `${rule.id}${SESSION_ROOT_KEY_INFIX}${root}`;
+}
+
+/**
+ * The single directory a session-root grant would cover, or `undefined` when there is no such thing
+ * and the option must not be offered.
+ *
+ * The shape conditions are about the grant being a sensible thing to remember: it has to be *one*
+ * operand, because a grant covering half a two-operand command is not a grant; absolute, because a
+ * relative path grants against a `cwd` this module cannot see; two segments or more, so a stray
+ * `rm -rf /Users` cannot offer to exempt a whole home directory tree; and a literal, which
+ * `canonicalizeLiteralOperand` already guarantees.
+ *
+ * The last condition is the one a list of shape rules cannot express, so it is **asked rather than
+ * predicted**: re-run the whole catalogue with the grant applied, and offer the option only if the
+ * command would then pass. `sudo rm -rf /Users/me/x` is the case that needs it — the grant is a
+ * perfectly well-formed one and it does step the removal rule aside, but `privilege-sudo` matches
+ * next and the user is prompted again, so an option promising to silence the command would have
+ * lied. An option that grants nothing the user can see is worse than an absent one.
+ *
+ * **The operand itself is granted, never its parent.** Granting the parent would cover a whole
+ * scratch area with one prompt, which is the more useful shape and is rejected for it:
+ * `rm -rf ~/project/dist` would grant `~/project`, silently exempting `rm -rf ~/project/src` for the
+ * rest of the session.
+ */
+export function findGrantableTarget(
+	rule: PermissionGateRule,
+	normalizedCommand: string,
+	sessionRootGrants: ReadonlySet<string> = new Set(),
+): string | undefined {
+	const { targetScope } = rule;
+	if (!targetScope) return undefined;
+
+	const operands = new Set(
+		splitCommandStatements(normalizedCommand).flatMap((statement) =>
+			findInvocationOperands(statement, targetScope.commandName).flat(),
+		),
+	);
+	if (operands.size !== 1) return undefined;
+
+	const canonical = canonicalizeLiteralOperand([...operands][0]!);
+	if (canonical === undefined || canonical.includes("*")) return undefined;
+
+	const root = canonical.replace(/\/+$/, "");
+	if (!root.startsWith("/") || root.split("/").filter(Boolean).length < 2) return undefined;
+
+	const withGrant = new Set([...sessionRootGrants, createSessionRootKey(rule, root)]);
+	return findDangerousRule(normalizedCommand, withGrant) === undefined ? root : undefined;
+}
+
+export function evaluateDangerousCommand(
+	command: unknown,
+	sessionRootGrants: ReadonlySet<string> = new Set(),
+): PermissionGateEvaluation {
 	const normalizedCommand = normalizeCommand(command);
-	const matchedRule = findDangerousRule(normalizedCommand);
+	const matchedRule = findDangerousRule(normalizedCommand, sessionRootGrants);
 
 	return {
 		normalizedCommand,
 		matchedRule,
 		sessionApprovalKey: matchedRule ? createSessionApprovalKey(matchedRule, normalizedCommand) : undefined,
+		grantableTarget: matchedRule ? findGrantableTarget(matchedRule, normalizedCommand, sessionRootGrants) : undefined,
 	};
 }
 
+/**
+ * Truncation keeps the head **and** the tail, because after the ephemeral-target exemption the
+ * normal shape of a gated removal is a long benign prefix with the dangerous part at the end —
+ * `rm -rf /tmp/<long scratch path> && rm -rf ~`. A head-only preview would show the user the half
+ * of the command they were never going to object to.
+ */
 export function formatCommandPreview(command: string, maxLength: number = COMMAND_PREVIEW_MAX_LENGTH): string {
 	const normalizedCommand = normalizeCommand(command);
 	if (normalizedCommand.length <= maxLength) {
 		return normalizedCommand;
 	}
 
-	return `${normalizedCommand.slice(0, Math.max(0, maxLength - 3))}...`;
+	const ellipsis = "...";
+	const kept = Math.max(0, maxLength - ellipsis.length);
+	const head = Math.ceil(kept / 2);
+	const tail = kept - head;
+
+	return `${normalizedCommand.slice(0, head)}${ellipsis}${tail > 0 ? normalizedCommand.slice(-tail) : ""}`;
 }
 
 export function formatRuleSummary(rule: PermissionGateRule): string {
