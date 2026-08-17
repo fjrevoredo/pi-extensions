@@ -70,9 +70,62 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0019
+Next id: 0020
 
 ---
+
+## 0019 — Stop permission-gate prompting on scratch-directory teardowns
+
+Date: 2026-08-17T14:28:59+02:00
+Scope: permission-gate 1.1.0
+
+Measured against a supplied session — 284 records, 74 `bash` calls — the catalogue fired five times
+and every one of the five was a false positive. Four were scratchpad teardowns under `/tmp`
+(`rm -rf /tmp/google-ads-api-contracts && mkdir -p …` and three of that shape); the fifth was
+`docker run --rm`, where `\brm\b` matched the flag because `\b` treats `-` as a word boundary. A gate
+that fires only on commands that are not dangerous trains the user to hammer Allow, which is the one
+failure mode a guardrail cannot afford. After the change all five are silent and the true-positive
+spot checks stay gated — `rm -rf /`, `rm -rf dist`, `rm -rf /tmp`, `rm -rf /tmp/*`, `rmdir build`,
+`truncate -s 0 src/app.ts`, `shred ~/.ssh/id_rsa`, `git push --force`, `kill 1234`,
+`xargs rm -rf < list.txt`, `rm -rf /tmp/x && rm -rf ~/Documents`, `sudo rm -rf /tmp/x`.
+
+Two defects, both narrowed. Command words are now matched with `(?<![-\w])` instead of `\b`, keeping
+`/bin/rm` and `\rm` and dropping `--rm`, `--kill-after` and `--halt-on-error`. `privilege-sudo` and
+`process-killall` keep the plain `\b` because `ansible-playbook --sudo` and `k3s-killall.sh` are
+true positives, `system-shutdown` gained a second lookbehind so `openrc-shutdown` still matches, and
+`privilege-su` gained an explicit `--su`/`--su-user` branch. Separately, a rule may now declare a
+`targetScope` and is **skipped** — not allowed — when every invocation of that command is confined
+below a catalogued throwaway root, so `sudo rm -rf /tmp/x` still prompts under `privilege-sudo`
+(`P3`, `P5`).
+
+The exemption's operand screen is an allowlist rather than a blacklist, because "prove no operand is
+dangerous" is a universally-quantified claim over a hand-rolled tokenizer and every gap in the
+tokenizer is a fail-open. Five such gaps were measured before the module was written: `/bin/rm` and
+`\rm` invisible to an exact-token search, `xargs rm -rf` satisfying `[].every()` vacuously, `$TMPDIR`
+trusted as a root a `TMPDIR=/` prefix in the same command controls, an unquoted `$DIR` turning one
+visible operand into two runtime ones, and `\.\.` surviving an `includes("..")` test. `$TMPDIR` was
+therefore dropped from the root catalogue and every entry is a literal path; root matching stays
+case-sensitive, which is the deliberate opposite of `advisor`'s `P6` fix because here folding case
+would widen an exemption rather than a denial.
+
+`normalizeCommand` now rewrites a newline to `; ` instead of collapsing it to a space. Collapsing
+fused one statement's command with the next statement's arguments, which is the exact shape of the
+third false positive. It becomes `; ` rather than staying `\n` so one normalizer still feeds
+matching, keying and display alike (`P6`) — which does move the approval key of any multi-line
+command. Command previews now keep both ends for the same reason: after the exemption, a gated
+removal is typically a long benign prefix with the dangerous part at the end.
+
+A fifth prompt option grants the matched rule for one directory and anything below it, for the
+session, so a scratch area outside the catalogue costs one prompt rather than one per teardown. It is
+offered only when re-running the catalogue with the grant applied would actually let the command
+through, which is asked rather than predicted: `sudo rm -rf /Users/me/x` has a well-formed grant that
+does step the removal rule aside, but `privilege-sudo` prompts next, so the option would have lied.
+
+`test/core.test.ts` gained the `T8` meta-test it was missing. It asserted only that every id in the
+table exists in the catalogue, never the reverse, which is why `privilege-sudo` had no positive case
+at all — a rule nothing asserts drifts, and that hole is what made the flag-position narrowing
+above worth distrusting until it was closed (`P4`). `pkill -KILL` now attributes to `process-pkill`
+rather than `process-kill`; still gated, and its approval key moves.
 
 ## 0018 — Harden the CI install and clear the quality gate's findings
 
