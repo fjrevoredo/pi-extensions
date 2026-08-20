@@ -56,6 +56,8 @@ sync_extensions() {
     'AGENTS.md'
     --exclude
     'sync-extensions.sh'
+    --exclude
+    'sync-extensions.ps1'
   )
 
   if [[ "${dry_run}" == "1" ]]; then

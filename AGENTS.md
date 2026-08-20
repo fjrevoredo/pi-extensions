@@ -21,9 +21,16 @@ new, or not being a *gate* exempts nothing — and nothing is excluded from Biom
 This repository is the source of truth for Francisco's private pi extensions. pi loads them
 from `~/.pi/agent/extensions/`, so editing here changes nothing until you sync:
 
+**Linux/macOS:**
 ```bash
 bash sync-extensions.sh --dry-run   # review the plan
 bash sync-extensions.sh             # apply it
+```
+
+**Windows:**
+```powershell
+powershell -ExecutionPolicy Bypass -File sync-extensions.ps1 -DryRun  # review the plan
+powershell -ExecutionPolicy Bypass -File sync-extensions.ps1           # apply it
 ```
 
 Then `/reload` inside pi.

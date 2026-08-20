@@ -70,9 +70,19 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0020
+Next id: 0021
 
 ---
+
+## 0020 — Add sync-extensions.ps1 for Windows 11
+
+Date: 2026-08-20T17:51:00+02:00
+Scope: repo
+
+Windows 11 lacked a native sync script. Created `sync-extensions.ps1` using robocopy — the Windows
+built-in equivalent of rsync — mirroring the bash version's behaviour and exclusion list. Added
+`sync-extensions.ps1` to the bash script's exclusions to prevent it from syncing to non-Windows
+machines. Updated AGENTS.md with Windows usage instructions.
 
 ## 0019 — Stop permission-gate prompting on scratch-directory teardowns
 
