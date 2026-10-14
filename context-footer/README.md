@@ -3,13 +3,14 @@
 A global Pi extension that replaces the default interactive footer with a two-row status display:
 
 ```text
- ~/platform/orders-api  │  feature/PLAT-4821  │  +4 ~2  │  session: idempotency fix
+ ~/platform/orders-api  │  feature/PLAT-4821  │  +4 ~2  │  session: idempotency fix  │  pane:w11:p1 tab:w11:t1
  ◐ Running bash  │  CTX ████░░░░░░ 42% · 84k/200k  │  Sonnet · high  │  $0.041
 ```
 
 ## Behaviour
 
-- **Project row:** working directory, Git branch, Git summary, and session name.
+- **Project row:** working directory, Git branch, Git summary, session name, and Herdr pane/tab IDs.
+- **Herdr location:** reads `HERDR_PANE_ID` and `HERDR_TAB_ID` from the environment and displays `pane:<id> tab:<id>`. Missing IDs are omitted. The complete location field drops first when the row does not fit; IDs are never shortened.
 - **Agent row:** agent/tool state, graphical context meter, model/thinking level, and cumulative provider-reported session cost.
 - **Context thresholds:** based on estimated tokens, not context-window percentage: green below 100k, yellow from 100k through 199,999, bold yellow from 200k through 249,999, and red at 250k and above. The displayed percentage remains the model-reported context-window percentage.
 - **Unknown context:** shows `CTX ?????????? ?%` when Pi has no current usage estimate, including immediately after compaction.

@@ -6,6 +6,7 @@ import {
 	findFittingCombination,
 	formatContextMeter,
 	formatGitSummary,
+	formatHerdrLocation,
 	getContextTone,
 	getCumulativeCost,
 	getToneStyle,
@@ -67,6 +68,15 @@ test("parses git porcelain status without double-counting conflicts", () => {
 	assert.deepEqual(summary, { staged: 2, modified: 2, untracked: 1, conflicted: 1 });
 	assert.equal(formatGitSummary(summary), "+2 ~2 ?1 !1");
 	assert.equal(parseGitStatus(""), undefined);
+});
+
+test("formats only available Herdr pane and tab IDs", () => {
+	assert.equal(formatHerdrLocation("w11:p1", "w11:t1"), "pane:w11:p1 tab:w11:t1");
+	assert.equal(formatHerdrLocation("wV:p1", "wV:t1"), "pane:wV:p1 tab:wV:t1");
+	assert.equal(formatHerdrLocation("w11:p1", undefined), "pane:w11:p1");
+	assert.equal(formatHerdrLocation(undefined, "w11:t1"), "tab:w11:t1");
+	assert.equal(formatHerdrLocation(undefined, undefined), undefined);
+	assert.equal(formatHerdrLocation("", ""), undefined);
 });
 
 test("sums only finite assistant-message costs", () => {

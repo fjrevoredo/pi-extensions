@@ -83,13 +83,14 @@ export class MultilineSelectList implements Component {
 			const itemIndex = visible.startIndex + offset;
 			const selected = itemIndex === this.selectedIndex;
 
-			for (let lineIndex = 0; lineIndex < row.lines.length; lineIndex++) {
-				const label = row.lines[lineIndex]!;
-				const prefix = lineIndex === 0 && selected ? "→ " : "  ";
-				const description =
-					lineIndex === 0 && row.description
-						? `${" ".repeat(Math.max(DESCRIPTION_GAP, layout.columnWidth - visibleWidth(label) + DESCRIPTION_GAP))}${row.description}`
-						: "";
+			for (let lineIndex = 0; lineIndex < row.visualHeight; lineIndex++) {
+				const label = row.lines[lineIndex] ?? "";
+				const descriptionLine = row.descriptionLines?.[lineIndex];
+				const prefix =
+					width <= 1 ? "" : lineIndex === 0 && selected ? (width >= 3 ? "→ " : "→") : width >= 3 ? "  " : " ";
+				const description = descriptionLine
+					? `${" ".repeat(Math.max(DESCRIPTION_GAP, layout.columnWidth - visibleWidth(label) + DESCRIPTION_GAP))}${descriptionLine}`
+					: "";
 				if (selected) {
 					lines.push(this.theme.selectedText(`${prefix}${label}${description}`));
 				} else {

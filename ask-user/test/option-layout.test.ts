@@ -69,12 +69,66 @@ test("keeps labels with long unbroken tokens and Unicode within width", () => {
 	}
 });
 
-test("keeps descriptions on the first line only when useful space remains", () => {
+test("wraps descriptions to three lines and marks omitted text", () => {
+	const layout = layoutOptions(
+		[
+			item(
+				"A short option",
+				"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five",
+			),
+		],
+		{ availableWidth: 80 },
+	);
+	const row = layout.rows[0]!;
+
+	assert.equal(row.descriptionLines?.length, 3);
+	assert.ok(row.descriptionLines?.at(-1)?.endsWith("..."));
+	const descriptionWidth = 80 - 2 - layout.columnWidth - 2;
+	assert.ok(row.descriptionLines?.every((line) => line.length <= descriptionWidth));
+	assert.equal(row.visualHeight, 3);
+});
+
+test("keeps short descriptions on one line and omits them when space is too narrow", () => {
 	const wide = layoutOptions([item("A short option", "Supporting description")], { availableWidth: 120 });
-	assert.equal(wide.rows[0]?.description, "Supporting description");
+	assert.deepEqual(wide.rows[0]?.descriptionLines, ["Supporting description"]);
+	assert.equal(wide.rows[0]?.visualHeight, 1);
 
 	const narrow = layoutOptions([item("A short option", "Supporting description")], { availableWidth: 20 });
-	assert.equal(narrow.rows[0]?.description, undefined);
+	assert.equal(narrow.rows[0]?.descriptionLines, undefined);
+});
+
+test("wraps long description words and normalizes line breaks", () => {
+	const layout = layoutOptions([item("A short option", "first\nsecond supercalifragilisticexpialidocious third")], {
+		availableWidth: 60,
+	});
+	const row = layout.rows[0]!;
+
+	assert.ok(row.descriptionLines);
+	assert.ok(row.descriptionLines!.length <= 3);
+	const descriptionWidth = 60 - 2 - layout.columnWidth - 2;
+	assert.ok(row.descriptionLines!.every((line) => line.length <= descriptionWidth));
+	assert.ok(row.descriptionLines!.some((line) => line.includes("first second")));
+	assert.ok(row.descriptionLines!.join("").replaceAll(" ", "").includes("supercalifragilisticexpialidocious"));
+});
+
+test("uses the larger label or description height for visible-window scrolling", () => {
+	const layout = layoutOptions(
+		[
+			item("short", "one two three four five six seven eight nine ten eleven twelve"),
+			item("next", "short description"),
+		],
+		{ availableWidth: 60, maxVisibleRows: 3 },
+	);
+
+	assert.equal(layout.rows[0]?.visualHeight, 3);
+	const first = getVisibleOptionWindow(layout, 0);
+	assert.equal(first.endIndex, 1);
+	assert.equal(first.hasNext, true);
+
+	const second = getVisibleOptionWindow(layout, 1);
+	assert.equal(second.startIndex, 1);
+	assert.equal(second.rows[0]?.item.value, "next");
+	assert.equal(second.hasPrevious, true);
 });
 
 test("uses complete logical options in the eight-row visible window", () => {

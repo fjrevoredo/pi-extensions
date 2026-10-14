@@ -6,7 +6,7 @@ it is not a commit log, because `git log` is already that.
 **This file records changes and nothing else.** It states no rules, settles no arguments, and
 supersedes nothing. Rules live in [`docs/PI_EXTENSIONS_BEST_PRACTICES.md`](docs/PI_EXTENSIONS_BEST_PRACTICES.md),
 decisions in its §16, deliberate absences in its §17. An entry that argues for a decision is in the
-wrong document. The rules governing this file are `D6` and `D7`; when to write an entry and when to
+wrong document. The rules governing this file are `D6`, `D7`, and `D8`; when to write an entry and when to
 read this file are in [`AGENTS.md`](AGENTS.md).
 
 ### How to add an entry
@@ -70,9 +70,35 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0021
+Next id: 0024
 
 ---
+
+## 0023 — Show Herdr pane and tab IDs in the footer
+
+Date: 2026-10-13T10:45:30+02:00
+Scope: context-footer 1.1.0
+
+The project row now includes `pane:<id> tab:<id>` from `HERDR_PANE_ID` and `HERDR_TAB_ID`.
+Missing IDs are omitted, and the complete location field drops before the existing fields when
+space is limited. The environment is injected for tests, and renderer tests cover complete IDs,
+missing IDs, and every width from 0 through 200 columns (S6, T4, T5, U1, U3, D7).
+
+## 0022 — Check upstream changelog freshness before writing
+
+Date: 2026-09-04T16:04:38+02:00
+Scope: repo
+
+The changelog id was allocated from a stale checkout while another session had already added entry 0020 upstream. The maintainer workflow now requires fetching the configured remote and checking the upstream changelog delta immediately before reserving an id or writing an entry. Agents must integrate incoming changelog changes, reread the current counter and newest entries, and never overwrite, renumber, or reuse upstream entries (D8).
+
+## 0021 — Wrap long ask_user option descriptions
+
+Date: 2026-09-04T15:49:03+02:00
+Scope: ask-user 2.2.2
+
+Long option descriptions now wrap to at most three lines and use an ellipsis when content remains. Description continuation lines are aligned with the shared label column and included in each option's visual height, so narrow terminals remain width-bounded and scrolling continues to operate on complete logical options (U1, U3, T5).
+
+This corrects the previous behavior, which kept descriptions on one line and silently removed their remaining text. The regression is covered by pure layout tests and renderer width and scrolling tests (D7).
 
 ## 0020 — Add sync-extensions.ps1 for Windows 11
 

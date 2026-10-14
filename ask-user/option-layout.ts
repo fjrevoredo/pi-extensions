@@ -16,6 +16,7 @@ export interface OptionLayoutConfig {
 	maxColumnFraction?: number;
 	prefixWidth?: number;
 	maxLines?: number;
+	maxDescriptionLines?: number;
 	maxVisibleRows?: number;
 	descriptionGap?: number;
 	minDescriptionWidth?: number;
@@ -24,7 +25,7 @@ export interface OptionLayoutConfig {
 export interface LayoutRow {
 	item: OptionLayoutItem;
 	lines: string[];
-	description?: string;
+	descriptionLines?: string[];
 	visualHeight: number;
 }
 
@@ -50,6 +51,7 @@ const DEFAULT_PREFIX_WIDTH = 2;
 // Wrapped labels never exceed three lines. The eight-row cap preserves the
 // existing SelectList footprint while scrolling by complete logical options.
 const DEFAULT_MAX_LINES = 3;
+const DEFAULT_MAX_DESCRIPTION_LINES = 3;
 const DEFAULT_MAX_VISIBLE_ROWS = 8;
 const DEFAULT_DESCRIPTION_GAP = 2;
 const DEFAULT_MIN_DESCRIPTION_WIDTH = 10;
@@ -127,7 +129,7 @@ function splitLongWord(word: string, width: number, metrics: TextMetrics): strin
 	return chunks;
 }
 
-function wrapLabel(text: string, width: number, metrics: TextMetrics): string[] {
+function wrapText(text: string, width: number, metrics: TextMetrics): string[] {
 	if (width <= 0) return [""];
 	const lines: string[] = [];
 	let current = "";
@@ -163,8 +165,8 @@ function wrapLabel(text: string, width: number, metrics: TextMetrics): string[] 
 	return lines;
 }
 
-function fitLabelLines(text: string, width: number, maxLines: number, metrics: TextMetrics): string[] {
-	const wrapped = wrapLabel(text, width, metrics);
+function fitTextLines(text: string, width: number, maxLines: number, metrics: TextMetrics): string[] {
+	const wrapped = wrapText(text, width, metrics);
 	if (wrapped.length <= maxLines) return wrapped;
 
 	const lines = wrapped.slice(0, Math.max(0, maxLines - 1));
@@ -194,6 +196,7 @@ export function layoutOptions(items: OptionLayoutItem[], config: OptionLayoutCon
 	const descriptionGap = config.descriptionGap ?? DEFAULT_DESCRIPTION_GAP;
 	const minDescriptionWidth = config.minDescriptionWidth ?? DEFAULT_MIN_DESCRIPTION_WIDTH;
 	const maxLines = config.maxLines ?? DEFAULT_MAX_LINES;
+	const maxDescriptionLines = config.maxDescriptionLines ?? DEFAULT_MAX_DESCRIPTION_LINES;
 	const columnWidth = calculateColumnWidth(items, config);
 	const descriptionAvailableWidth = Math.max(
 		0,
@@ -201,12 +204,17 @@ export function layoutOptions(items: OptionLayoutItem[], config: OptionLayoutCon
 	);
 
 	const rows = items.map((item) => {
-		const lines = fitLabelLines(item.label, columnWidth, maxLines, metrics);
-		const description =
+		const lines = fitTextLines(item.label, columnWidth, maxLines, metrics);
+		const descriptionLines =
 			item.description && descriptionAvailableWidth > minDescriptionWidth
-				? metrics.truncate(normalizeText(item.description), descriptionAvailableWidth, "")
+				? fitTextLines(item.description, descriptionAvailableWidth, maxDescriptionLines, metrics)
 				: undefined;
-		return { item, lines, description, visualHeight: lines.length };
+		return {
+			item,
+			lines,
+			descriptionLines,
+			visualHeight: Math.max(lines.length, descriptionLines?.length ?? 0),
+		};
 	});
 
 	return {

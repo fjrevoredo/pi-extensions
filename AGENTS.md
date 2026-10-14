@@ -35,9 +35,9 @@ powershell -ExecutionPolicy Bypass -File sync-extensions.ps1           # apply i
 
 Then `/reload` inside pi.
 
-`sync-extensions.sh` is the only thing that writes to the runtime directory. Never edit or
-copy into it by hand: the next sync runs `rsync --delete` and will silently discard whatever
-you put there.
+`sync-extensions.sh` and `sync-extensions.ps1` are the only things that write to the runtime
+directory. Never edit or copy into it by hand: the next sync mirrors the repository and will
+silently discard whatever you put there.
 
 ## Setup
 
@@ -69,6 +69,13 @@ user.email`, which does not account for everything that can override it.
   describes a change you are still allowed to abandon — and not a follow-up, which is the
   version of this that gets forgotten. `npm run changelog` is in the hook and in CI, but it
   checks the file's frame, not whether you wrote the entry.
+- Before reserving a changelog id or writing an entry, perform the `D8` freshness check: run
+  `git fetch --prune`, inspect `git status --short --branch`, confirm an upstream with
+  `git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'`, and run
+  `git diff --name-status HEAD..'@{upstream}' -- CHANGELOG.md` plus
+  `git diff --name-status HEAD -- CHANGELOG.md`. If the fetch fails, no upstream exists, or either
+  diff lists `CHANGELOG.md`, stop and integrate or reconcile the existing work before rereading
+  `Next id:`. Never overwrite, renumber, or reuse an upstream entry.
 - Bring code into conformance as you touch it. Do not let a new file match old habits.
 - The hook **and CI** are the enforcement, not good intentions. If a check blocks you, fix the
   code — do not weaken the rule. `--no-verify` is for deliberate WIP commits only, and it

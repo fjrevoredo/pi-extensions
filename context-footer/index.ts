@@ -9,6 +9,7 @@ import {
 	formatCost,
 	formatCwd,
 	formatGitSummary,
+	formatHerdrLocation,
 	type GitSummary,
 	getContextTone,
 	getCumulativeCost,
@@ -26,7 +27,7 @@ function themeTone(theme: Theme, tone: ContextTone, text: string): string {
 	return style.bold ? theme.bold(painted) : painted;
 }
 
-export default function contextFooterExtension(pi: ExtensionAPI): void {
+export default function contextFooterExtension(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): void {
 	let active = false;
 	let phase: AgentPhase = "ready";
 	let gitSummary: GitSummary | undefined;
@@ -134,8 +135,11 @@ export default function contextFooterExtension(pi: ExtensionAPI): void {
 					const gitSegment = gitText ? theme.fg(gitSummary?.conflicted ? "error" : "warning", gitText) : undefined;
 					const sessionName = ctx.sessionManager.getSessionName();
 					const sessionSegment = sessionName ? theme.fg("dim", `session: ${sessionName}`) : undefined;
+					const herdrLocation = formatHerdrLocation(env.HERDR_PANE_ID, env.HERDR_TAB_ID);
+					const herdrSegment = herdrLocation ? theme.fg("dim", herdrLocation) : undefined;
 
 					const topOptions = [
+						[cwd, branchText, gitSegment, sessionSegment, herdrSegment],
 						[cwd, branchText, gitSegment, sessionSegment],
 						[cwd, branchText, gitSegment],
 						[cwd, branchText],

@@ -49,7 +49,7 @@ For bulk workflows, add an explicit fixed option such as `archive-all`. Do not i
 
 ### Option display behaviour
 
-Long labels share one primary column. The column starts at 32 cells when the terminal permits, grows as needed up to two-fifths of the available row width, wraps labels to at most three lines, and uses `...` only when content still does not fit. The list keeps one logical option per selection and scrolls by option rather than by wrapped line.
+Long labels and descriptions share one width-bounded option row. The label column starts at 32 cells when the terminal permits and grows as needed up to two-fifths of the available row width. Labels and descriptions wrap to at most three lines, and use `...` only when content still does not fit. The list keeps one logical option per selection and scrolls by option rather than by wrapped line.
 
 ## Module layout
 

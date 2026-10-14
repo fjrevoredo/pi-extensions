@@ -166,6 +166,13 @@ export function formatCwd(cwd: string, home = process.env.HOME ?? process.env.US
 	return cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd;
 }
 
+export function formatHerdrLocation(paneId: string | undefined, tabId: string | undefined): string | undefined {
+	const parts: string[] = [];
+	if (paneId) parts.push(`pane:${paneId}`);
+	if (tabId) parts.push(`tab:${tabId}`);
+	return parts.length ? parts.join(" ") : undefined;
+}
+
 export function combineFooterSegments(segments: Array<string | undefined>): string {
 	return segments.filter((segment): segment is string => Boolean(segment)).join(" │ ");
 }

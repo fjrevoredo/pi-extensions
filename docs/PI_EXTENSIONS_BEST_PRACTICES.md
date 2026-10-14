@@ -16,7 +16,7 @@
 
 Strength is assigned by **enforceability**, not by importance. Some of the most important rules here are SHOULD — `S1` in particular — because nothing can verify them automatically. A MUST that nothing checks is just a SHOULD that devalues the real MUSTs.
 
-Of 89 rules: **32 MUST, 56 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
+Of 90 rules: **32 MUST, 57 SHOULD, 1 MAY**. Rules are numbered (`L1`, `T3`, …) so reviews and commit messages can cite them.
 
 ---
 
@@ -479,6 +479,20 @@ Does not earn an entry:
 **MAJOR is deliberately cheap here, and that is the point.** Nothing pins to these numbers — §17 still forbids compatibility layers, there is no consumer holding a range, and there is exactly one live copy of every extension. So the trigger is set at *the model's input changed* rather than at a judgement about how breaking the break was. A rule that asks how much a break broke returns different answers on different days; §"How to read the rules" already assigns strength by mechanism rather than by importance for the same reason. Rewording a single `description` moves MAJOR, and `A2` and `N6` are the argument: descriptions materially change what the caller does.
 
 The versions the record begins at are reconstructed from history rather than invented, and `CHANGELOG.md` entry `0001` says so. There is no `0.x` phase — `0.x` conventionally promises a contract will stabilise later, which is a claim about the future nobody here is making.
+
+**D8 — SHOULD: refresh and inspect the upstream changelog immediately before reserving an id or writing an entry.**
+
+The changelog is shared by sessions and its `Next id:` line is not safe to read from a stale checkout. Before editing `CHANGELOG.md`, fetch the configured remote and inspect the upstream delta:
+
+```bash
+git fetch --prune
+git status --short --branch
+git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}'
+git diff --name-status HEAD..'@{upstream}' -- CHANGELOG.md
+git diff --name-status HEAD -- CHANGELOG.md
+```
+
+If the upstream is missing, the fetch fails, or either `git diff` command lists `CHANGELOG.md`, stop before writing. Preserve local work, integrate the upstream commits through the normal Git workflow, then repeat the check and reread the current `Next id:` line and newest entries. Do not overwrite, renumber, or reuse an upstream entry. A local `CHANGELOG.md` modification must be understood and reconciled before another entry is added; `npm run changelog` checks local structure, not remote freshness.
 
 ---
 

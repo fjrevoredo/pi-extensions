@@ -6,7 +6,7 @@
 // properties (R2) — before that the module could not be loaded by node --test.
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { KeybindingsManager, SelectListTheme } from "@earendil-works/pi-tui";
+import { type KeybindingsManager, type SelectListTheme, visibleWidth } from "@earendil-works/pi-tui";
 import { type MultilineSelectItem, MultilineSelectList } from "../multiline-select-list.ts";
 
 // Fixed sentinels rather than real key sequences: this file asserts on dispatch,
@@ -112,4 +112,92 @@ test("marks only the selected row with the arrow prefix", () => {
 	assert.equal(lines[1], "→ Option b");
 	assert.ok(lines[0]?.startsWith("  ") && !lines[0].startsWith("→ "), "unselected rows keep the two-space prefix");
 	assert.ok(lines[2]?.startsWith("  ") && !lines[2].startsWith("→ "));
+});
+
+test("renders wrapped descriptions in an aligned continuation column", () => {
+	const list = new MultilineSelectList(
+		[
+			{
+				value: "first",
+				label: "First choice",
+				description: "one two three four five six seven eight",
+			},
+			{
+				value: "second",
+				label: "Second choice",
+				description: "one two three four five six seven eight",
+			},
+		],
+		theme,
+		keybindings,
+	);
+
+	const lines = list.render(60);
+	assert.equal(lines.length, 4);
+	assert.ok(lines[0]?.startsWith("→ First choice"));
+	assert.ok(lines[1]?.includes("seven eight"));
+	assert.ok(lines[1]?.startsWith("  ") && !lines[1].startsWith("→ "));
+	assert.ok(lines[2]?.startsWith("  Second choice"));
+	assert.equal(lines[0]?.indexOf("one"), lines[1]?.indexOf("seven"));
+});
+
+test("keeps wrapped labels and descriptions aligned when their heights differ", () => {
+	const list = new MultilineSelectList(
+		[
+			{
+				value: "first",
+				label: "First choice has several words that wrap",
+				description: "short description",
+			},
+		],
+		theme,
+		keybindings,
+	);
+
+	const lines = list.render(60);
+	assert.equal(lines.length, 2);
+	assert.ok(lines[0]?.includes("short description"));
+	assert.ok(lines[1]?.startsWith("  words that wrap"));
+	assert.ok(!lines[1]?.includes("short description"));
+});
+
+test("keeps every rendered line within the requested width", () => {
+	const list = new MultilineSelectList(
+		[
+			{
+				value: "first",
+				label: "A long option label with several words",
+				description:
+					"A long description with enough words to wrap across several lines and remain bounded at every terminal width.",
+			},
+			{
+				value: "second",
+				label: "Another long option label",
+				description: "Another description that must remain inside the terminal width.",
+			},
+		],
+		theme,
+		keybindings,
+	);
+
+	for (const width of [1, 20, 40, 60, 80, 120]) {
+		assert.ok(
+			list.render(width).every((line) => visibleWidth(line) <= width),
+			`line exceeds width ${width}`,
+		);
+	}
+});
+
+test("scrolls by complete logical options when descriptions wrap", () => {
+	const description =
+		"one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty";
+	const list = new MultilineSelectList(
+		["first", "second", "third"].map((value) => ({ value, label: `Option ${value}`, description })),
+		theme,
+		keybindings,
+	);
+
+	const lines = list.render(60);
+	assert.equal(lines.filter((line) => line.includes("Option")).length, 2);
+	assert.ok(lines.at(-1)?.includes("(1/3)"));
 });

@@ -41,7 +41,7 @@ const markerTheme: FakeTheme = {
 	bold: (text) => `<b>${text}</b>`,
 };
 
-function createHarness(theme: FakeTheme = plainTheme) {
+function createHarness(theme: FakeTheme = plainTheme, env: NodeJS.ProcessEnv = {}) {
 	const handlers = new Map<string, Handler[]>();
 	let footerFactory: any;
 	let usage: any = { tokens: 84_000, contextWindow: 200_000, percent: 42 };
@@ -62,7 +62,7 @@ function createHarness(theme: FakeTheme = plainTheme) {
 		},
 	} as unknown as ExtensionAPI;
 
-	contextFooterExtension(pi);
+	contextFooterExtension(pi, env);
 
 	const ctx = {
 		mode: "tui",
@@ -130,6 +130,34 @@ test("renders the complete two-row footer and Git summary", async () => {
 	assert.match(lines[1], /claude-sonnet · high/);
 	assert.doesNotMatch(lines[1], /anthropic\//);
 	assert.match(lines[1], /\$0\.123/);
+});
+
+test("shows Herdr IDs on the project row and drops the whole field when it does not fit", async () => {
+	const harness = createHarness(plainTheme, { HERDR_PANE_ID: "w11:p1", HERDR_TAB_ID: "w11:t1" });
+	const footer = await harness.start();
+	const location = "pane:w11:p1 tab:w11:t1";
+
+	assert.match(footer.render(160)[0], /session: idempotency fix │ pane:w11:p1 tab:w11:t1$/);
+	assert.doesNotMatch(footer.render(160)[1], /pane:|tab:/);
+	assert.doesNotMatch(footer.render(40)[0], /pane:|tab:/);
+	for (let width = 0; width <= 200; width++) {
+		const lines = footer.render(width);
+		for (const line of lines) assert.ok(visibleWidth(line) <= width);
+		if (/pane:|tab:/.test(lines[0])) assert.ok(lines[0].endsWith(location));
+	}
+});
+
+test("omits Herdr labels outside Herdr and supports a missing ID", async () => {
+	for (const [env, expected] of [
+		[{}, undefined],
+		[{ HERDR_PANE_ID: "w11:p1" }, "pane:w11:p1"],
+		[{ HERDR_TAB_ID: "w11:t1" }, "tab:w11:t1"],
+	] as const) {
+		const footer = await createHarness(plainTheme, env).start();
+		const line = footer.render(160)[0];
+		if (expected) assert.ok(line.endsWith(expected));
+		else assert.doesNotMatch(line, /pane:|tab:/);
+	}
 });
 
 test("tracks agent and tool lifecycle state", async () => {
