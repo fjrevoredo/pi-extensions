@@ -70,9 +70,20 @@ There is no current-versions table here on purpose. `version.ts` is the single s
 version, the newest `Scope:` line naming an extension is the only copy of it in this file, and the
 check asserts those two agree. A third copy would be a third thing to forget.
 
-Next id: 0024
+Next id: 0025
 
 ---
+
+## 0024 — Count subagent and summary cost in the footer
+
+Date: 2026-10-14T17:43:46+02:00
+Scope: context-footer 1.1.1
+
+The cumulative cost counted only assistant messages, so it dropped the cost that pi records on tool
+results with nested model usage (such as `subagent` runs), on standalone `usage` entries, and on
+compaction and branch-summary entries. It now sums the same entries as pi's built-in footer. On a real
+session with subagent calls the footer showed $0.86 against a true total of $5.53. The pure-function
+test covers each counted entry type and the ignored ones (T4, D7).
 
 ## 0023 — Show Herdr pane and tab IDs in the footer
 

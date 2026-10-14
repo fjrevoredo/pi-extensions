@@ -29,14 +29,17 @@ export interface GitSummary {
 	untracked: number;
 }
 
-interface AssistantUsageEntry {
+interface CostUsage {
+	cost?: { total?: number };
+}
+
+interface UsageEntry {
 	type?: string;
 	message?: {
 		role?: string;
-		usage?: {
-			cost?: { total?: number };
-		};
+		usage?: CostUsage;
 	};
+	usage?: CostUsage;
 }
 
 const CONTEXT_CELLS = 10;
@@ -146,11 +149,27 @@ export function formatGitSummary(summary: GitSummary | undefined): string | unde
 	return parts.join(" ");
 }
 
-export function getCumulativeCost(entries: Iterable<AssistantUsageEntry>): number {
+// Counts the same entries as pi's built-in footer: assistant turns, tool results that report nested
+// model usage (such as subagent runs), standalone `usage` entries, and compaction and branch summaries.
+function getEntryUsage(entry: UsageEntry): CostUsage | undefined {
+	switch (entry.type) {
+		case "message":
+			return entry.message?.role === "assistant" || entry.message?.role === "toolResult"
+				? entry.message.usage
+				: undefined;
+		case "usage":
+		case "compaction":
+		case "branch_summary":
+			return entry.usage;
+		default:
+			return undefined;
+	}
+}
+
+export function getCumulativeCost(entries: Iterable<UsageEntry>): number {
 	let total = 0;
 	for (const entry of entries) {
-		if (entry.type !== "message" || entry.message?.role !== "assistant") continue;
-		const cost = entry.message.usage?.cost?.total;
+		const cost = getEntryUsage(entry)?.cost?.total;
 		if (typeof cost === "number" && Number.isFinite(cost)) total += cost;
 	}
 	return total;

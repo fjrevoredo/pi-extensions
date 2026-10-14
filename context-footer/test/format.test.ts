@@ -79,15 +79,21 @@ test("formats only available Herdr pane and tab IDs", () => {
 	assert.equal(formatHerdrLocation("", ""), undefined);
 });
 
-test("sums only finite assistant-message costs", () => {
+test("sums finite costs from every entry pi counts toward session cost", () => {
 	assert.equal(
 		getCumulativeCost([
-			{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.12 } } } },
+			{ type: "message", message: { role: "assistant", usage: { cost: { total: 0.125 } } } },
 			{ type: "message", message: { role: "user", usage: { cost: { total: 100 } } } },
 			{ type: "message", message: { role: "assistant", usage: { cost: { total: Number.NaN } } } },
-			{ type: "custom" },
+			{ type: "message", message: { role: "toolResult", usage: { cost: { total: 0.5 } } } },
+			{ type: "message", message: { role: "toolResult" } },
+			{ type: "usage", usage: { cost: { total: 0.25 } } },
+			{ type: "compaction", usage: { cost: { total: 0.0625 } } },
+			{ type: "branch_summary", usage: { cost: { total: 0.0625 } } },
+			{ type: "branch_summary" },
+			{ type: "custom", usage: { cost: { total: 100 } } },
 		]),
-		0.12,
+		1,
 	);
 });
 

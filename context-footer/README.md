@@ -11,7 +11,7 @@ A global Pi extension that replaces the default interactive footer with a two-ro
 
 - **Project row:** working directory, Git branch, Git summary, session name, and Herdr pane/tab IDs.
 - **Herdr location:** reads `HERDR_PANE_ID` and `HERDR_TAB_ID` from the environment and displays `pane:<id> tab:<id>`. Missing IDs are omitted. The complete location field drops first when the row does not fit; IDs are never shortened.
-- **Agent row:** agent/tool state, graphical context meter, model/thinking level, and cumulative provider-reported session cost.
+- **Agent row:** agent/tool state, graphical context meter, model/thinking level, and cumulative provider-reported session cost (the same total as pi's built-in footer, including subagent, compaction, and branch-summary cost).
 - **Context thresholds:** based on estimated tokens, not context-window percentage: green below 100k, yellow from 100k through 199,999, bold yellow from 200k through 249,999, and red at 250k and above. The displayed percentage remains the model-reported context-window percentage.
 - **Unknown context:** shows `CTX ?????????? ?%` when Pi has no current usage estimate, including immediately after compaction.
 - **Responsive layout:** drops less important fields as terminal width decreases. It never emits a line wider than the width Pi supplies.
